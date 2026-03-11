@@ -1,0 +1,357 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Conversation Memory Demo — Valkey for AI</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
+<style>
+*,*::before,*::after{margin:0;padding:0;box-sizing:border-box}
+:root{--bg:#000;--card:rgba(255,255,255,.04);--brd:rgba(255,255,255,.08);--t1:#f5f5f7;--t2:rgba(245,245,247,.6);--t3:rgba(245,245,247,.4);--g1:#6366f1;--g2:#a855f7;--green:#10b981;--red:#f43f5e;--yellow:#f59e0b;--font:'Inter',system-ui,sans-serif}
+html{-webkit-font-smoothing:antialiased}
+body{font-family:var(--font);background:var(--bg);color:var(--t1);line-height:1.6;min-height:100vh}
+a{color:inherit;text-decoration:none}
+.nav{position:sticky;top:0;z-index:100;background:rgba(0,0,0,.8);backdrop-filter:blur(20px);border-bottom:1px solid var(--brd);padding:16px 32px}
+.nav-inner{max-width:1200px;margin:0 auto;display:flex;align-items:center;justify-content:space-between}
+.nav-logo{display:flex;align-items:center;gap:8px;font-weight:700;font-size:16px}
+.accent{color:var(--g2)}
+.nav-links{display:flex;gap:24px;font-size:14px;color:var(--t2)}
+.nav-links a:hover{color:var(--t1)}
+.container{max-width:1200px;margin:0 auto;padding:24px}
+.header{text-align:center;padding:24px 0 16px}
+.header h1{font-size:28px;font-weight:800;letter-spacing:-.03em}
+.header h1 span{background:linear-gradient(135deg,var(--g1),var(--g2));-webkit-background-clip:text;-webkit-text-fill-color:transparent}
+.header p{color:var(--t3);font-size:14px;margin-top:4px}
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:16px}
+.panel{background:var(--card);border:1px solid var(--brd);border-radius:16px;overflow:hidden;display:flex;flex-direction:column}
+.panel-head{padding:12px 16px;border-bottom:1px solid var(--brd);font-weight:600;font-size:14px;display:flex;justify-content:space-between;align-items:center}
+.panel-body{padding:12px 16px;overflow-y:auto;flex:1;max-height:400px}
+.panel-foot{padding:10px 16px;border-top:1px solid var(--brd);display:flex;gap:8px}
+/* Chat */
+.msg{margin-bottom:10px;display:flex;flex-direction:column}
+.msg.user{align-items:flex-end}
+.msg.assistant{align-items:flex-start}
+.msg .bubble{max-width:80%;padding:8px 14px;border-radius:14px;font-size:13px;line-height:1.5}
+.msg.user .bubble{background:var(--g1);color:#fff;border-bottom-right-radius:4px}
+.msg.assistant .bubble{background:rgba(255,255,255,.08);color:var(--t1);border-bottom-left-radius:4px}
+.msg .meta{font-size:10px;color:var(--t3);margin-top:2px;padding:0 4px}
+/* Command log */
+.cmd{padding:6px 10px;margin-bottom:4px;border-radius:8px;font-size:12px;font-family:'SF Mono','Fira Code',monospace;background:rgba(99,102,241,.06);border-left:3px solid var(--g1)}
+.cmd.search{border-left-color:var(--g2)}
+.cmd.cache{border-left-color:var(--green)}
+.cmd.expire{border-left-color:var(--red)}
+.cmd .ts{color:var(--t3);margin-right:6px}
+.cmd .latency{color:var(--yellow);float:right}
+/* Stats */
+.stats{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:16px}
+.stat{text-align:center;background:var(--card);border:1px solid var(--brd);border-radius:12px;padding:12px 8px}
+.stat .val{font-size:28px;font-weight:800;color:var(--g1)}
+.stat .lbl{font-size:11px;color:var(--t3);margin-top:2px}
+/* Search results */
+.result{padding:8px 12px;margin-bottom:6px;border-radius:8px;background:rgba(168,85,247,.06);border-left:3px solid var(--g2);font-size:13px}
+.result .score{color:var(--g2);font-weight:700;margin-right:6px}
+.result .session{color:var(--t3);font-size:11px}
+/* Controls */
+button{padding:8px 16px;border-radius:8px;border:none;cursor:pointer;font-size:12px;font-weight:600;transition:.15s}
+.btn-primary{background:linear-gradient(135deg,var(--g1),var(--g2));color:#fff}
+.btn-secondary{background:rgba(255,255,255,.06);color:var(--t2);border:1px solid var(--brd)}
+.btn-danger{background:rgba(244,63,94,.15);color:var(--red);border:1px solid rgba(244,63,94,.2)}
+.btn-green{background:rgba(16,185,129,.15);color:var(--green);border:1px solid rgba(16,185,129,.2)}
+button:hover{transform:translateY(-1px);filter:brightness(1.1)}
+input[type=text]{background:rgba(255,255,255,.04);border:1px solid var(--brd);color:var(--t1);padding:8px 12px;border-radius:8px;font-size:13px;flex:1;font-family:var(--font)}
+input[type=text]::placeholder{color:var(--t3)}
+.sessions{display:flex;gap:6px;flex-wrap:wrap}
+.sess-btn{padding:4px 12px;border-radius:100px;font-size:11px;font-weight:600;background:rgba(255,255,255,.06);color:var(--t2);border:1px solid var(--brd);cursor:pointer}
+.sess-btn.active{background:rgba(99,102,241,.15);color:var(--g1);border-color:rgba(99,102,241,.3)}
+.empty{color:var(--t3);text-align:center;padding:24px;font-size:13px}
+@media(max-width:768px){.grid{grid-template-columns:1fr}.stats{grid-template-columns:repeat(2,1fr)}}
+</style>
+</head>
+<body>
+<nav class="nav"><div class="nav-inner">
+<a href="/" class="nav-logo"><img src="/valkey-logo.svg" alt="Valkey" height="24"><span class="accent">for ai</span></a>
+<div class="nav-links"><a href="/#use-cases">Use Cases</a><a href="/cookbooks/conversation-memory/">Cookbooks</a><a href="https://github.com/meet-bhagdev/valkeyforai" target="_blank">GitHub</a></div>
+</div></nav>
+
+<div class="container">
+<div class="header">
+<h1>Interactive <span>Conversation Memory</span> Demo</h1>
+<p>Watch Valkey commands fire in real-time as conversations are stored, searched, and cached. No backend — all simulated client-side.</p>
+</div>
+
+<div class="stats">
+<div class="stat"><div class="val" id="msgCount">0</div><div class="lbl">Messages Stored</div></div>
+<div class="stat"><div class="val" id="sessionCount">0</div><div class="lbl">Active Sessions</div></div>
+<div class="stat"><div class="val" id="cacheHits">0</div><div class="lbl">Cache Hits</div></div>
+<div class="stat"><div class="val" id="avgLatency">0.0</div><div class="lbl">Avg Latency (ms)</div></div>
+</div>
+
+<div style="margin-bottom:12px">
+<div class="sessions" id="sessionTabs"></div>
+</div>
+
+<div class="grid">
+<!-- Chat Panel -->
+<div class="panel" style="min-height:450px">
+<div class="panel-head">💬 Chat <span id="currentSession" style="color:var(--t3);font-size:12px">session_001</span></div>
+<div class="panel-body" id="chatArea"><div class="empty">Starting auto-demo...</div></div>
+<div class="panel-foot">
+<input type="text" id="chatInput" placeholder="Type a message..." onkeydown="if(event.key==='Enter')sendMessage()">
+<button class="btn-primary" onclick="sendMessage()">Send</button>
+</div>
+</div>
+
+<!-- Valkey Commands Panel -->
+<div class="panel" style="min-height:450px">
+<div class="panel-head">⚡ Valkey Commands <span style="color:var(--t3);font-size:12px" id="cmdCount">0 commands</span></div>
+<div class="panel-body" id="cmdLog"><div class="empty">Commands will appear here...</div></div>
+<div class="panel-foot">
+<button class="btn-green" onclick="searchMemory()">🔍 Search Memory</button>
+<button class="btn-secondary" onclick="runAutoDemo()">▶ Auto Demo</button>
+<button class="btn-danger" onclick="expireSession()">⏰ Expire Session</button>
+<button class="btn-secondary" onclick="clearAll()">↺ Reset</button>
+</div>
+</div>
+</div>
+
+<!-- Search Results -->
+<div class="panel" style="margin-top:16px">
+<div class="panel-head">🧠 Semantic Search Results <span style="color:var(--t3);font-size:12px">FT.SEARCH with KNN vector similarity</span></div>
+<div class="panel-body" id="searchResults" style="max-height:200px"><div class="empty">Click "Search Memory" or type a question to search across all sessions</div></div>
+<div class="panel-foot">
+<input type="text" id="searchInput" placeholder="Search past conversations by meaning..." onkeydown="if(event.key==='Enter')searchMemory()">
+<button class="btn-primary" onclick="searchMemory()">🔍 Search</button>
+</div>
+</div>
+</div>
+
+<script>
+// State
+let sessions = {};
+let currentSessionId = 'session_001';
+let totalMsgs = 0, cacheHitCount = 0, cmdTotal = 0, latencySum = 0;
+let cmdLogEl, chatEl, searchEl;
+
+// Simulated conversation data for auto-demo
+const DEMO_CONVERSATIONS = {
+  session_001: [
+    {role:'user', content:'What is Valkey and how is it different from Redis?'},
+    {role:'assistant', content:'Valkey is an open-source, high-performance key-value store forked from Redis. It\'s maintained by the Linux Foundation and is fully compatible with the Redis protocol.'},
+    {role:'user', content:'Can Valkey do vector search?'},
+    {role:'assistant', content:'Yes! Valkey supports vector similarity search through the valkey-search module. You can create HNSW or FLAT indexes and run KNN queries with FT.SEARCH.'},
+  ],
+  session_002: [
+    {role:'user', content:'How do I deploy my service to ECS?'},
+    {role:'assistant', content:'Create a task definition with your container image, set up an ECS service with your desired count, and configure an ALB for traffic routing. Use blue-green deployment for zero-downtime updates.'},
+    {role:'user', content:'What about CI/CD for ECS?'},
+    {role:'assistant', content:'Use CodePipeline with CodeBuild for building images and CodeDeploy for ECS blue-green deployments. Store your Dockerfile in the repo root.'},
+  ],
+  session_003: [
+    {role:'user', content:'Our API is slow under load. How can we improve latency?'},
+    {role:'assistant', content:'Common approaches: add a caching layer with Valkey (sub-ms reads), use connection pooling for databases, implement request coalescing, and consider async processing for non-critical paths.'},
+  ],
+};
+
+// Simulated semantic similarity (cosine-ish)
+const EMBEDDINGS = {};
+function fakeEmbed(text) {
+  const words = text.toLowerCase().split(/\W+/);
+  const dims = ['deploy','valkey','redis','vector','search','cache','latency','ecs','api','memory','session','llm','agent','stream','performance'];
+  return dims.map(d => words.filter(w => w.includes(d) || d.includes(w)).length + Math.random()*0.1);
+}
+function cosineSim(a, b) {
+  let dot=0, na=0, nb=0;
+  for(let i=0;i<a.length;i++){dot+=a[i]*b[i];na+=a[i]*a[i];nb+=b[i]*b[i]}
+  return na&&nb ? dot/(Math.sqrt(na)*Math.sqrt(nb)) : 0;
+}
+
+window.onload = () => {
+  cmdLogEl = document.getElementById('cmdLog');
+  chatEl = document.getElementById('chatArea');
+  searchEl = document.getElementById('searchResults');
+  initSession('session_001');
+  updateStats();
+  setTimeout(runAutoDemo, 800);
+};
+
+function initSession(id) {
+  if (!sessions[id]) sessions[id] = {messages:[], meta:{created:Date.now(),tokens:0,msgCount:0}};
+  currentSessionId = id;
+  renderSessions();
+  renderChat();
+  document.getElementById('currentSession').textContent = id;
+}
+
+function renderSessions() {
+  const el = document.getElementById('sessionTabs');
+  el.innerHTML = Object.keys(sessions).map(id =>
+    `<button class="sess-btn ${id===currentSessionId?'active':''}" onclick="switchSession('${id}')">${id} (${sessions[id].messages.length} msgs)</button>`
+  ).join('') + `<button class="sess-btn" onclick="newSession()">+ New</button>`;
+}
+
+function switchSession(id) { currentSessionId = id; renderChat(); renderSessions(); document.getElementById('currentSession').textContent = id; }
+function newSession() { const id = 'session_' + String(Object.keys(sessions).length+1).padStart(3,'0'); initSession(id); }
+
+function renderChat() {
+  const msgs = sessions[currentSessionId]?.messages || [];
+  if (!msgs.length) { chatEl.innerHTML = '<div class="empty">No messages yet</div>'; return; }
+  chatEl.innerHTML = msgs.map(m =>
+    `<div class="msg ${m.role}"><div class="bubble">${m.content}</div><div class="meta">${m.role} · ${new Date(m.ts).toLocaleTimeString()}</div></div>`
+  ).join('');
+  chatEl.scrollTop = chatEl.scrollHeight;
+}
+
+function logCmd(type, cmd, latency) {
+  if (cmdTotal === 0) cmdLogEl.innerHTML = '';
+  cmdTotal++;
+  latencySum += latency;
+  const ts = new Date().toLocaleTimeString('en-US',{hour12:false,hour:'2-digit',minute:'2-digit',second:'2-digit'});
+  const cls = type==='search'?'search':type==='cache'?'cache':type==='expire'?'expire':'';
+  const el = document.createElement('div');
+  el.className = `cmd ${cls}`;
+  el.innerHTML = `<span class="ts">${ts}</span>${cmd}<span class="latency">${latency.toFixed(1)}ms</span>`;
+  cmdLogEl.prepend(el);
+  document.getElementById('cmdCount').textContent = `${cmdTotal} commands`;
+  updateStats();
+}
+
+function addMessage(sessionId, role, content) {
+  const sess = sessions[sessionId];
+  const msg = {role, content, ts: Date.now()};
+  sess.messages.push(msg);
+  sess.meta.msgCount++;
+  sess.meta.tokens += content.split(/\s+/).length * 1.3 | 0;
+  totalMsgs++;
+  EMBEDDINGS[content] = fakeEmbed(content);
+
+  // Simulate Valkey commands
+  logCmd('write', `RPUSH chat:${sessionId} '{"role":"${role}","content":"${content.slice(0,40)}..."}'`, 0.08 + Math.random()*0.05);
+  logCmd('write', `HINCRBY meta:${sessionId} message_count 1`, 0.05 + Math.random()*0.03);
+  logCmd('write', `EXPIRE chat:${sessionId} 3600`, 0.04);
+
+  // Simulate semantic memory store (for assistant messages)
+  if (role === 'assistant') {
+    logCmd('write', `JSON.SET mem:${(Math.random()*1e8|0).toString(16)} $ '{"content":"...","embedding":[...]}'`, 0.15 + Math.random()*0.1);
+  }
+
+  if (sessionId === currentSessionId) renderChat();
+  renderSessions();
+  updateStats();
+}
+
+function sendMessage() {
+  const input = document.getElementById('chatInput');
+  const text = input.value.trim();
+  if (!text) return;
+  input.value = '';
+
+  addMessage(currentSessionId, 'user', text);
+
+  // Check semantic cache
+  const queryEmb = fakeEmbed(text);
+  let cacheHit = false;
+  for (const [cached, emb] of Object.entries(EMBEDDINGS)) {
+    if (cosineSim(queryEmb, emb) > 0.85 && cached !== text) {
+      cacheHitCount++;
+      cacheHit = true;
+      logCmd('cache', `FT.SEARCH cache_idx "(*)==>[KNN 1 @embedding $vec]" → HIT (0.92)`, 1.2 + Math.random());
+      break;
+    }
+  }
+  if (!cacheHit) {
+    logCmd('search', `FT.SEARCH cache_idx "(*)==>[KNN 1 @embedding $vec]" → MISS`, 1.5 + Math.random());
+  }
+
+  // Simulate LLM response
+  logCmd('write', `LRANGE chat:${currentSessionId} -20 -1`, 0.08);
+  setTimeout(() => {
+    const response = cacheHit
+      ? '(Cached) I answered a similar question before. Valkey supports this pattern with sub-millisecond latency.'
+      : 'That\'s a great question! Based on the conversation context, I can help with that. Valkey provides the data structures needed for this pattern.';
+    addMessage(currentSessionId, 'assistant', response);
+    if (!cacheHit) {
+      logCmd('cache', `JSON.SET llmcache:${(Math.random()*1e6|0).toString(16)} $ '{"query":"...","response":"...","embedding":[...]}'`, 0.2);
+      logCmd('write', `EXPIRE llmcache:... 3600`, 0.04);
+    }
+  }, cacheHit ? 50 : 400);
+}
+
+function searchMemory() {
+  const input = document.getElementById('searchInput');
+  const query = input.value.trim() || 'How to improve performance?';
+  const queryEmb = fakeEmbed(query);
+
+  logCmd('search', `FT.SEARCH memory_idx "(*)==>[KNN 5 @embedding $vec AS score]"`, 1.8 + Math.random()*2);
+
+  // Find similar messages across all sessions
+  const results = [];
+  for (const [sid, sess] of Object.entries(sessions)) {
+    for (const msg of sess.messages) {
+      const emb = EMBEDDINGS[msg.content];
+      if (emb) {
+        const score = cosineSim(queryEmb, emb);
+        if (score > 0.15) results.push({content: msg.content, session: sid, role: msg.role, score});
+      }
+    }
+  }
+  results.sort((a,b) => b.score - a.score);
+  const top = results.slice(0, 5);
+
+  if (!top.length) {
+    searchEl.innerHTML = '<div class="empty">No matching memories found</div>';
+    return;
+  }
+  searchEl.innerHTML = top.map(r =>
+    `<div class="result"><span class="score">${r.score.toFixed(3)}</span>${r.content.slice(0,100)}${r.content.length>100?'...':''} <span class="session">${r.session} · ${r.role}</span></div>`
+  ).join('');
+}
+
+function expireSession() {
+  logCmd('expire', `DEL chat:${currentSessionId}`, 0.06);
+  logCmd('expire', `DEL meta:${currentSessionId}`, 0.05);
+  totalMsgs -= (sessions[currentSessionId]?.messages.length || 0);
+  delete sessions[currentSessionId];
+  const remaining = Object.keys(sessions);
+  if (remaining.length) { switchSession(remaining[0]); }
+  else { initSession('session_001'); }
+  renderSessions();
+  updateStats();
+}
+
+function clearAll() {
+  sessions = {}; totalMsgs = 0; cacheHitCount = 0; cmdTotal = 0; latencySum = 0;
+  Object.keys(EMBEDDINGS).forEach(k => delete EMBEDDINGS[k]);
+  cmdLogEl.innerHTML = '<div class="empty">Commands will appear here...</div>';
+  searchEl.innerHTML = '<div class="empty">Click "Search Memory" to search across all sessions</div>';
+  document.getElementById('cmdCount').textContent = '0 commands';
+  initSession('session_001');
+  updateStats();
+}
+
+function updateStats() {
+  document.getElementById('msgCount').textContent = totalMsgs;
+  document.getElementById('sessionCount').textContent = Object.keys(sessions).length;
+  document.getElementById('cacheHits').textContent = cacheHitCount;
+  document.getElementById('avgLatency').textContent = cmdTotal ? (latencySum/cmdTotal).toFixed(1) : '0.0';
+}
+
+async function runAutoDemo() {
+  clearAll();
+  for (const [sid, msgs] of Object.entries(DEMO_CONVERSATIONS)) {
+    initSession(sid);
+    switchSession(sid);
+    for (const msg of msgs) {
+      addMessage(sid, msg.role, msg.content);
+      await new Promise(r => setTimeout(r, 300));
+    }
+    await new Promise(r => setTimeout(r, 200));
+  }
+  // Run a semantic search at the end
+  switchSession('session_001');
+  document.getElementById('searchInput').value = 'How to improve API performance?';
+  await new Promise(r => setTimeout(r, 500));
+  searchMemory();
+}
+</script>
+</body>
+</html>

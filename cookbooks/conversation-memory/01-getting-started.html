@@ -1,0 +1,190 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>01 Getting Started — Conversation Memory — Valkey for AI</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../cookbook.css">
+</head>
+<body>
+<nav class="nav"><div class="nav-inner">
+<a href="/" class="nav-logo"><img src="/valkey-logo.svg" alt="Valkey"><span class="accent">for ai</span></a>
+<div class="nav-links"><a href="/#use-cases">Use Cases</a><a href="/cookbooks/conversation-memory/">Cookbooks</a><a href="https://github.com/meet-bhagdev/valkeyforai" target="_blank">GitHub</a></div>
+</div></nav>
+
+<article>
+<div class="breadcrumb"><a href="/">Home</a> → <a href="/cookbooks/conversation-memory/">Conversation Memory</a> → 01 Getting Started</div>
+<div class="meta">
+<span class="diff-easy">Beginner</span>
+<span class="lang">Python</span>
+<span class="lang">~5 min</span>
+</div>
+
+<h1>Getting Started</h1>
+<p class="lead">Connect to Valkey with GLIDE, store chat messages, retrieve conversation history, and auto-expire sessions. By the end you'll have working conversation memory in under 5 minutes.</p>
+
+<h2>Why Valkey for Conversation Memory?</h2>
+<p>LLMs are stateless — every API call starts from scratch. Conversation memory bridges the gap. Valkey is ideal because:</p>
+<ul>
+<li><strong>Sub-millisecond reads</strong> — <code>LRANGE</code> returns the last 50 messages in ~0.1ms</li>
+<li><strong>Atomic appends</strong> — <code>RPUSH</code> adds messages without race conditions</li>
+<li><strong>Built-in TTL</strong> — Sessions auto-expire with <code>EXPIRE</code>, no cleanup jobs needed</li>
+<li><strong>GLIDE client</strong> — Official Valkey client with Rust core for high performance</li>
+</ul>
+
+<h2>Prerequisites</h2>
+<ul>
+<li>Docker installed (or a running Valkey instance)</li>
+<li>Python 3.9+</li>
+</ul>
+
+<h2>Step 1: Start Valkey</h2>
+<pre><code>docker run -d --name valkey -p 6379:6379 valkey/valkey:latest</code></pre>
+<p>Verify it's running:</p>
+<pre><code>docker exec valkey valkey-cli PING
+<span class="comment"># PONG</span></code></pre>
+
+<h2>Step 2: Install GLIDE</h2>
+<pre><code>pip install valkey-glide</code></pre>
+<p>GLIDE is the official Valkey client — Rust core with Python bindings. It works with both standalone Valkey and ElastiCache for Valkey clusters.</p>
+
+<h2>Step 3: Understand the Data Model</h2>
+<p>Each conversation is stored as a <strong>Valkey List</strong>:</p>
+<pre><code><span class="comment"># Key format: chat:{session_id}</span>
+<span class="comment"># Each element is a JSON-encoded message</span>
+
+chat:sess_abc123 → [
+    '{"role": "user", "content": "What is Valkey?"}',
+    '{"role": "assistant", "content": "Valkey is an open-source..."}',
+    '{"role": "user", "content": "How fast is it?"}',
+    '{"role": "assistant", "content": "Sub-millisecond latency..."}'
+]</code></pre>
+
+<div class="callout">
+<p><strong>Key Insight:</strong> Valkey Lists are doubly-linked lists optimized for push/pop at both ends. <code>RPUSH</code> appends in O(1). <code>LRANGE -N -1</code> retrieves the last N messages in O(N). This maps perfectly to conversation history — always appending, always reading the tail.</p>
+</div>
+
+<h2>Step 4: Connect and Store Messages</h2>
+<pre><code><span class="keyword">import</span> asyncio
+<span class="keyword">import</span> json
+<span class="keyword">from</span> glide <span class="keyword">import</span> GlideClient, GlideClientConfiguration, NodeAddress
+
+
+<span class="keyword">async def</span> <span class="func">main</span>():
+    <span class="comment"># Connect to Valkey with GLIDE</span>
+    config = GlideClientConfiguration([NodeAddress(<span class="string">"localhost"</span>, <span class="num">6379</span>)])
+    client = <span class="keyword">await</span> GlideClient.create(config)
+
+    session_id = <span class="string">"sess_abc123"</span>
+    key = <span class="string">f"chat:</span>{session_id}<span class="string">"</span>
+
+    <span class="comment"># Store a conversation</span>
+    messages = [
+        {<span class="string">"role"</span>: <span class="string">"user"</span>, <span class="string">"content"</span>: <span class="string">"What is Valkey?"</span>},
+        {<span class="string">"role"</span>: <span class="string">"assistant"</span>, <span class="string">"content"</span>: <span class="string">"Valkey is an open-source, high-performance key-value store."</span>},
+        {<span class="string">"role"</span>: <span class="string">"user"</span>, <span class="string">"content"</span>: <span class="string">"How fast is it?"</span>},
+        {<span class="string">"role"</span>: <span class="string">"assistant"</span>, <span class="string">"content"</span>: <span class="string">"Sub-millisecond latency for most operations."</span>},
+    ]
+
+    <span class="keyword">for</span> msg <span class="keyword">in</span> messages:
+        <span class="keyword">await</span> client.rpush(key, [json.dumps(msg)])
+
+    <span class="comment"># Set TTL — session expires after 1 hour</span>
+    <span class="keyword">await</span> client.expire(key, <span class="num">3600</span>)
+
+    print(<span class="string">"✅ Conversation stored"</span>)
+
+
+asyncio.run(main())</code></pre>
+
+<h2>Step 5: Retrieve Conversation History</h2>
+<pre><code><span class="keyword">async def</span> <span class="func">get_history</span>(client, session_id, last_n=<span class="num">50</span>):
+    <span class="string">"""Retrieve the last N messages from a conversation."""</span>
+    key = <span class="string">f"chat:</span>{session_id}<span class="string">"</span>
+
+    <span class="comment"># LRANGE with negative indices = last N messages</span>
+    raw = <span class="keyword">await</span> client.lrange(key, -last_n, -<span class="num">1</span>)
+
+    <span class="keyword">return</span> [json.loads(msg) <span class="keyword">for</span> msg <span class="keyword">in</span> raw]
+
+
+<span class="comment"># Usage</span>
+history = <span class="keyword">await</span> get_history(client, <span class="string">"sess_abc123"</span>)
+<span class="keyword">for</span> msg <span class="keyword">in</span> history:
+    print(<span class="string">f"</span>{msg[<span class="string">'role'</span>]}<span class="string">: </span>{msg[<span class="string">'content'</span>]}<span class="string">"</span>)
+
+<span class="comment"># user: What is Valkey?</span>
+<span class="comment"># assistant: Valkey is an open-source, high-performance key-value store.</span>
+<span class="comment"># user: How fast is it?</span>
+<span class="comment"># assistant: Sub-millisecond latency for most operations.</span></code></pre>
+
+<h2>Step 6: Feed History to an LLM</h2>
+<p>The conversation history is already in the format LLMs expect — a list of <code>{"role", "content"}</code> dicts:</p>
+<pre><code><span class="keyword">import</span> boto3, json
+
+<span class="keyword">async def</span> <span class="func">chat</span>(client, session_id, user_message):
+    <span class="comment"># 1. Save the user message</span>
+    key = <span class="string">f"chat:</span>{session_id}<span class="string">"</span>
+    <span class="keyword">await</span> client.rpush(key, [json.dumps({<span class="string">"role"</span>: <span class="string">"user"</span>, <span class="string">"content"</span>: user_message})])
+
+    <span class="comment"># 2. Get conversation history (last 20 messages)</span>
+    history = <span class="keyword">await</span> get_history(client, session_id, last_n=<span class="num">20</span>)
+
+    <span class="comment"># 3. Call the LLM with full context</span>
+    bedrock = boto3.client(<span class="string">"bedrock-runtime"</span>, region_name=<span class="string">"us-west-2"</span>)
+    response = bedrock.invoke_model(
+        modelId=<span class="string">"anthropic.claude-3-haiku-20240307-v1:0"</span>,
+        body=json.dumps({
+            <span class="string">"anthropic_version"</span>: <span class="string">"bedrock-2023-05-31"</span>,
+            <span class="string">"max_tokens"</span>: <span class="num">500</span>,
+            <span class="string">"messages"</span>: history,  <span class="comment"># ← directly from Valkey</span>
+        }),
+    )
+    assistant_msg = json.loads(response[<span class="string">"body"</span>].read())[<span class="string">"content"</span>][<span class="num">0</span>][<span class="string">"text"</span>]
+
+    <span class="comment"># 4. Save the assistant response</span>
+    <span class="keyword">await</span> client.rpush(key, [json.dumps({<span class="string">"role"</span>: <span class="string">"assistant"</span>, <span class="string">"content"</span>: assistant_msg})])
+
+    <span class="comment"># 5. Refresh TTL</span>
+    <span class="keyword">await</span> client.expire(key, <span class="num">3600</span>)
+
+    <span class="keyword">return</span> assistant_msg</code></pre>
+
+<h2>How It Works Under the Hood</h2>
+<table>
+<tr><th>Operation</th><th>Valkey Command</th><th>Latency</th></tr>
+<tr><td>Append message</td><td><code>RPUSH chat:{id} '{"role":"user",...}'</code></td><td>~0.1ms</td></tr>
+<tr><td>Get last 20 messages</td><td><code>LRANGE chat:{id} -20 -1</code></td><td>~0.1ms</td></tr>
+<tr><td>Set session TTL</td><td><code>EXPIRE chat:{id} 3600</code></td><td>~0.1ms</td></tr>
+<tr><td>Check TTL remaining</td><td><code>TTL chat:{id}</code></td><td>~0.1ms</td></tr>
+<tr><td>Get conversation length</td><td><code>LLEN chat:{id}</code></td><td>~0.1ms</td></tr>
+<tr><td>Delete conversation</td><td><code>DEL chat:{id}</code></td><td>~0.1ms</td></tr>
+</table>
+
+<h2>ElastiCache for Valkey</h2>
+<p>To use ElastiCache instead of local Docker, just change the connection:</p>
+<pre><code><span class="comment"># Local Docker</span>
+config = GlideClientConfiguration([NodeAddress(<span class="string">"localhost"</span>, <span class="num">6379</span>)])
+
+<span class="comment"># ElastiCache for Valkey</span>
+config = GlideClientConfiguration(
+    [NodeAddress(<span class="string">"my-cluster.xxxxx.cache.amazonaws.com"</span>, <span class="num">6379</span>)],
+    use_tls=<span class="keyword">True</span>,
+)</code></pre>
+<p>Everything else stays the same. GLIDE handles the connection, TLS, and cluster topology automatically.</p>
+
+<div class="callout">
+<p><strong>What's Next:</strong> In the next cookbook, we'll add session metadata — tracking user IDs, token counts, and model info alongside the conversation history using Valkey Hashes.</p>
+</div>
+
+<div class="nav-prev-next">
+<div></div>
+<a href="02-session-management.html" class="next">
+<span class="label">Next →</span>
+<span class="title">02 — Session Management</span>
+</a>
+</div>
+</article>
+</body>
+</html>

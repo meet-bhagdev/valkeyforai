@@ -6,22 +6,170 @@
 <title>Conversation Memory for Chatbots — Valkey for AI</title>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="../use-case.css">
-<style>:root{--accent-color:#8b5cf6;--accent-color2:#8b5cf6;--accent-gradient:linear-gradient(135deg,#8b5cf6,#8b5cf6);--accent-bg:linear-gradient(135deg,#8b5cf6,#8b5cf6);--accent-glow:rgba(139,92,246,.18)}.btn-primary{background:linear-gradient(135deg,#8b5cf6,#8b5cf6)}.uc-breadcrumb a{color:#8b5cf6}</style>
+<style>
+  :root{
+    --accent-color:#8b5cf6;--accent-color2:#a855f7;
+    --accent-gradient:linear-gradient(135deg,#8b5cf6,#a855f7);
+    --accent-bg:linear-gradient(135deg,#8b5cf6,#a855f7);
+    --accent-glow:rgba(139,92,246,.18)
+  }
+  .btn-primary{background:linear-gradient(135deg,#8b5cf6,#a855f7)}
+  .btn-primary:hover{box-shadow:0 4px 20px rgba(139,92,246,.35)}
+  .uc-breadcrumb a{color:#8b5cf6}
+</style>
 </head>
 <body>
-<nav class="nav"><div class="nav-inner"><a href="/" class="nav-logo"><img src="/valkey-logo.svg" alt="Valkey"><span class="accent">for ai</span></a><div class="nav-links"><a href="/#use-cases">Use Cases</a><a href="https://github.com/meet-bhagdev/valkeyforai" target="_blank">GitHub</a></div></div></nav>
+<nav class="nav"><div class="nav-inner">
+  <a href="/" class="nav-logo"><img src="/valkey-logo.svg" alt="Valkey"><span class="accent">for ai</span></a>
+  <div class="nav-links">
+    <a href="/#use-cases">Use Cases</a>
+    <a href="/use-cases/conversation-memory/">Conversation Memory</a>
+    <a href="/demo/conversation-memory.html">Live Demo</a>
+    <a href="https://github.com/meet-bhagdev/valkeyforai" target="_blank">GitHub</a>
+  </div>
+</div></nav>
+
 <div class="uc-hero">
-<div class="uc-breadcrumb"><a href="/">Home</a> &rarr; <a href="/#use-cases">Use Cases</a> &rarr; Semantic Caching</div>
-<div class="uc-icon-wrap" style="background:linear-gradient(135deg,#8b5cf6,#8b5cf6)"><svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg></div>
-<h1>Conversation Memory<br><span>for Chatbots</span></h1>
-<p>Low-latency session storage for chatbot conversations with TTL expiry.</p>
-<div class="uc-hero-tags"><span>Chatbots</span><span>Sessions</span><span>TTL</span><span>Context Window</span></div>
+  <div class="uc-breadcrumb"><a href="/">Home</a> → <a href="/#use-cases">Use Cases</a> → Conversation Memory</div>
+  <div class="uc-icon-wrap" style="background:linear-gradient(135deg,#8b5cf6,#a855f7)">
+    <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+  </div>
+  <h1>Conversation Memory<br><span>for Chatbots</span></h1>
+  <p>Scalable, low-latency session storage for chatbot and agent conversations. Six Valkey data structures — LIST, HASH, JSON, STRING, STREAM, and FT.SEARCH — powering a complete AI memory system.</p>
+  <div class="uc-hero-tags">
+    <span>Chatbots</span><span>Sessions</span><span>Vector Search</span><span>Semantic Cache</span><span>Agent State</span>
+  </div>
 </div>
-<div style="max-width:800px;margin:0 auto;padding:0 24px 48px"><div style="background:linear-gradient(135deg,rgba(139,92,246,.08),rgba(139,92,246,.08));border:1px solid rgba(139,92,246,.2);border-radius:16px;padding:48px;text-align:center">
-<div style="display:inline-block;padding:4px 12px;border-radius:100px;font-size:11px;font-weight:600;background:rgba(139,92,246,.15);color:#818cf8;margin-bottom:16px">Cookbooks &amp; Demo Coming Soon</div>
-<h2 style="font-size:28px;font-weight:900;margin-bottom:12px">Conversation Memory cookbooks are in progress</h2>
-<p style="font-size:16px;color:rgba(245,245,247,.65);max-width:500px;margin:0 auto 32px">Step-by-step guides and a live interactive demo are being built. Explore the existing cookbooks in the meantime.</p>
-<div style="display:flex;gap:12px;justify-content:center;flex-wrap:wrap"><a href="/use-cases/rate-limiting/" class="btn btn-primary">Rate Limiting (6 Cookbooks) &#8599;</a><a href="/use-cases/feature-store/" class="btn btn-outline">Feature Store (6 Cookbooks) &#8599;</a><a href="https://github.com/meet-bhagdev/valkeyforai" target="_blank" class="btn btn-outline">GitHub &#8599;</a></div>
-</div></div>
-<div class="uc-github"><div class="uc-github-card"><div><h3>Star the repo to get notified</h3><p>All cookbooks are open source. Star the repo to follow progress.</p></div><div class="uc-github-card-actions"><a href="https://github.com/meet-bhagdev/valkeyforai" target="_blank" class="btn btn-primary">View on GitHub &rarr;</a><a href="/" class="btn btn-outline">All Use Cases &rarr;</a></div></div></div>
-</body></html>
+
+<div class="uc-main">
+  <!-- COOKBOOKS PANEL -->
+  <div class="uc-panel">
+    <div class="uc-panel-header">
+      <h2>
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>
+        Cookbooks
+      </h2>
+      <p>5 step-by-step guides — each introduces a new Valkey data structure for a different aspect of conversation memory</p>
+    </div>
+    <div class="uc-panel-body">
+      <ul class="cb-list">
+        <li class="cb-item">
+          <a href="/cookbooks/conversation-memory/01-getting-started.html">
+            <span class="cb-num">01</span>
+            <div class="cb-info">
+              <h4>Getting Started</h4>
+              <p>Store chat messages with RPUSH, retrieve history with LRANGE, auto-expire with TTL</p>
+              <div class="cb-badges"><span class="cb-badge easy">Beginner</span><span class="cb-badge time">~5 min</span></div>
+            </div>
+          </a>
+        </li>
+        <li class="cb-item">
+          <a href="/cookbooks/conversation-memory/02-session-management.html">
+            <span class="cb-num">02</span>
+            <div class="cb-info">
+              <h4>Session Management</h4>
+              <p>Track metadata with HASH — user ID, token count, timestamps. Sliding window history with LTRIM</p>
+              <div class="cb-badges"><span class="cb-badge medium">Intermediate</span><span class="cb-badge time">~15 min</span></div>
+            </div>
+          </a>
+        </li>
+        <li class="cb-item">
+          <a href="/cookbooks/conversation-memory/03-semantic-memory.html">
+            <span class="cb-num">03</span>
+            <div class="cb-info">
+              <h4>Semantic Memory</h4>
+              <p>Vector search across sessions with JSON.SET + FT.SEARCH KNN. Find relevant context by meaning</p>
+              <div class="cb-badges"><span class="cb-badge medium">Intermediate</span><span class="cb-badge time">~20 min</span></div>
+            </div>
+          </a>
+        </li>
+        <li class="cb-item">
+          <a href="/cookbooks/conversation-memory/04-semantic-caching.html">
+            <span class="cb-num">04</span>
+            <div class="cb-info">
+              <h4>Semantic Caching</h4>
+              <p>Cache LLM responses by meaning. Skip expensive API calls when a similar question was already answered</p>
+              <div class="cb-badges"><span class="cb-badge hard">Advanced</span><span class="cb-badge time">~20 min</span></div>
+            </div>
+          </a>
+        </li>
+        <li class="cb-item">
+          <a href="/cookbooks/conversation-memory/05-agent-state.html">
+            <span class="cb-num">05</span>
+            <div class="cb-info">
+              <h4>Agent State &amp; Tool Results</h4>
+              <p>Checkpoint reasoning with HASH, cache tool outputs with STRING+TTL, log actions to STREAM</p>
+              <div class="cb-badges"><span class="cb-badge hard">Advanced</span><span class="cb-badge time">~25 min</span></div>
+            </div>
+          </a>
+        </li>
+      </ul>
+    </div>
+  </div>
+
+  <!-- DEMO PANEL -->
+  <div class="uc-panel" style="display:flex;flex-direction:column">
+    <div class="uc-panel-header">
+      <h2>
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+        Live Demo
+      </h2>
+      <p>Watch Valkey commands fire in real-time as conversations are stored, searched, and cached</p>
+    </div>
+    <iframe class="demo-frame" src="/demo/conversation-memory.html" title="Conversation Memory Live Demo"></iframe>
+  </div>
+</div>
+
+<!-- HOW IT WORKS -->
+<div style="max-width:1200px;margin:0 auto;padding:0 24px 48px">
+  <div style="background:var(--card);border:1px solid var(--brd);border-radius:var(--radius);padding:36px">
+    <h2 style="font-size:22px;font-weight:800;margin-bottom:24px">How Valkey Powers Conversation Memory</h2>
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:20px">
+      <div>
+        <div style="font-size:13px;font-weight:600;color:#8b5cf6;margin-bottom:8px">CHAT HISTORY</div>
+        <code style="display:block;background:rgba(0,0,0,.4);padding:12px;border-radius:8px;font-size:12px;line-height:1.6;color:#c4b5fd">RPUSH chat:{session} {msg}<br>LRANGE chat:{session} -20 -1<br>EXPIRE chat:{session} 3600</code>
+        <p style="font-size:13px;color:var(--t2);margin-top:8px">LIST for ordered messages. O(1) append, O(N) tail read. ~0.1ms.</p>
+      </div>
+      <div>
+        <div style="font-size:13px;font-weight:600;color:#8b5cf6;margin-bottom:8px">SESSION METADATA</div>
+        <code style="display:block;background:rgba(0,0,0,.4);padding:12px;border-radius:8px;font-size:12px;line-height:1.6;color:#c4b5fd">HSET meta:{session} user_id ..<br>HINCRBY meta:{session} tokens 150<br>HGETALL meta:{session}</code>
+        <p style="font-size:13px;color:var(--t2);margin-top:8px">HASH for metadata. Atomic field updates. ~0.1ms.</p>
+      </div>
+      <div>
+        <div style="font-size:13px;font-weight:600;color:#8b5cf6;margin-bottom:8px">SEMANTIC SEARCH</div>
+        <code style="display:block;background:rgba(0,0,0,.4);padding:12px;border-radius:8px;font-size:12px;line-height:1.6;color:#c4b5fd">JSON.SET mem:{id} $ {doc}<br>FT.SEARCH memory_idx<br>&nbsp;&nbsp;"(*)==>[KNN 5 @emb $vec]"</code>
+        <p style="font-size:13px;color:var(--t2);margin-top:8px">JSON + HNSW vector index. Find by meaning. ~1-3ms.</p>
+      </div>
+      <div>
+        <div style="font-size:13px;font-weight:600;color:#8b5cf6;margin-bottom:8px">SEMANTIC CACHE</div>
+        <code style="display:block;background:rgba(0,0,0,.4);padding:12px;border-radius:8px;font-size:12px;line-height:1.6;color:#c4b5fd">FT.SEARCH cache_idx KNN 1<br>&nbsp;&nbsp;→ score ≥ 0.90 → HIT<br>JSON.SET llmcache:{id} $ ..</code>
+        <p style="font-size:13px;color:var(--t2);margin-top:8px">Cache LLM responses by meaning. Cut costs 40%+. ~1-3ms.</p>
+      </div>
+      <div>
+        <div style="font-size:13px;font-weight:600;color:#8b5cf6;margin-bottom:8px">AGENT CHECKPOINTS</div>
+        <code style="display:block;background:rgba(0,0,0,.4);padding:12px;border-radius:8px;font-size:12px;line-height:1.6;color:#c4b5fd">HSET agent:state:{run} step 2<br>HGETALL agent:state:{run}<br>SET tool:cache:{hash} .. EX 300</code>
+        <p style="font-size:13px;color:var(--t2);margin-top:8px">HASH for state, STRING+TTL for tool cache. Resume on crash.</p>
+      </div>
+      <div>
+        <div style="font-size:13px;font-weight:600;color:#8b5cf6;margin-bottom:8px">EVENT LOG</div>
+        <code style="display:block;background:rgba(0,0,0,.4);padding:12px;border-radius:8px;font-size:12px;line-height:1.6;color:#c4b5fd">XADD agent:log:{run} *<br>&nbsp;&nbsp;action "search" details ..<br>XREAD STREAMS agent:log 0</code>
+        <p style="font-size:13px;color:var(--t2);margin-top:8px">STREAM for ordered audit trail. Replay and debug. ~0.1ms.</p>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="uc-github">
+  <div class="uc-github-card">
+    <div>
+      <h3>Complete source code on GitHub</h3>
+      <p>All cookbooks use Valkey GLIDE (official client) with Python examples. Compatible with ElastiCache for Valkey.</p>
+    </div>
+    <div class="uc-github-card-actions">
+      <a href="https://github.com/meet-bhagdev/valkeyforai" target="_blank" class="btn btn-primary">View on GitHub →</a>
+      <a href="/cookbooks/conversation-memory/" class="btn btn-outline">All 5 Cookbooks →</a>
+    </div>
+  </div>
+</div>
+</body>
+</html>

@@ -1,0 +1,221 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>03 Semantic Memory — Conversation Memory — Valkey for AI</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../cookbook.css">
+</head>
+<body>
+<nav class="nav"><div class="nav-inner">
+<a href="/" class="nav-logo"><img src="/valkey-logo.svg" alt="Valkey"><span class="accent">for ai</span></a>
+<div class="nav-links"><a href="/#use-cases">Use Cases</a><a href="/cookbooks/conversation-memory/">Cookbooks</a><a href="https://github.com/meet-bhagdev/valkeyforai" target="_blank">GitHub</a></div>
+</div></nav>
+
+<article>
+<div class="breadcrumb"><a href="/">Home</a> → <a href="/cookbooks/conversation-memory/">Conversation Memory</a> → 03 Semantic Memory</div>
+<div class="meta"><span class="diff-mid">Intermediate</span><span class="lang">Python</span><span class="lang">~20 min</span></div>
+
+<h1>Semantic Memory with <span class="gradient">Vector Search</span></h1>
+<p class="lead">Store conversation embeddings with JSON.SET and search by meaning with FT.SEARCH KNN. Find relevant past context across all sessions — even when the words are completely different.</p>
+
+<h2>The Problem</h2>
+<p>Cookbook 01-02 gave us ordered chat history. But what if a user asks "How do I deploy?" and three weeks ago they discussed deployment in a different session? <code>LRANGE</code> can't find that — it only reads the current session. You need <strong>semantic search</strong>: finding messages by meaning, not position.</p>
+
+<h2>Architecture</h2>
+<pre><code><span class="comment">User asks: "How do I deploy?"</span>
+<span class="comment">        │</span>
+<span class="comment">        ▼</span>
+<span class="comment">   Embed query → [0.12, -0.45, 0.78, ...]</span>
+<span class="comment">        │</span>
+<span class="comment">        ▼</span>
+<span class="comment">   FT.SEARCH memory_idx "(*)==>[KNN 5 @embedding $vec]"</span>
+<span class="comment">        │</span>
+<span class="comment">        ▼</span>
+<span class="comment">   Returns: messages about deployment from ANY session</span></code></pre>
+
+<h2>Prerequisites</h2>
+<ul>
+<li>Valkey with the <strong>valkey-search</strong> module (use <code>valkey/valkey-bundle</code> Docker image)</li>
+<li>An embedding model (we use Amazon Bedrock Titan, but any works)</li>
+</ul>
+
+<h2>Step 1: Start Valkey with Search Module</h2>
+<pre><code>docker run -d --name valkey -p 6379:6379 valkey/valkey-bundle:latest</code></pre>
+<p>The <code>valkey-bundle</code> image includes valkey-search for vector similarity search and valkey-json for JSON document storage.</p>
+
+<h2>Step 2: Create the Vector Index</h2>
+<pre><code><span class="keyword">from</span> glide <span class="keyword">import</span> (
+    GlideClient, GlideClientConfiguration, NodeAddress,
+    ft, TagField, NumericField,
+    VectorField, VectorAlgorithm, VectorFieldAttributesHnsw,
+    VectorType, DistanceMetricType,
+    FtCreateOptions, DataType,
+)
+
+<span class="keyword">async def</span> <span class="func">create_memory_index</span>(client):
+    <span class="comment"># Check if index already exists</span>
+    existing = <span class="keyword">await</span> ft.list(client)
+    names = [n.decode() <span class="keyword">for</span> n <span class="keyword">in</span> existing]
+    <span class="keyword">if</span> <span class="string">"memory_idx"</span> <span class="keyword">in</span> names:
+        <span class="keyword">return</span>
+
+    hnsw = VectorFieldAttributesHnsw(
+        dimensions=<span class="num">1536</span>,  <span class="comment"># Titan embedding size</span>
+        distance_metric=DistanceMetricType.COSINE,
+        type=VectorType.FLOAT32,
+    )
+
+    <span class="keyword">await</span> ft.create(
+        client, <span class="string">"memory_idx"</span>,
+        schema=[
+            TagField(<span class="string">"$.session_id"</span>, alias=<span class="string">"session_id"</span>),
+            TagField(<span class="string">"$.role"</span>, alias=<span class="string">"role"</span>),
+            TagField(<span class="string">"$.user_id"</span>, alias=<span class="string">"user_id"</span>),
+            NumericField(<span class="string">"$.timestamp"</span>, alias=<span class="string">"timestamp"</span>),
+            VectorField(<span class="string">"$.embedding"</span>, VectorAlgorithm.HNSW,
+                        alias=<span class="string">"embedding"</span>, attributes=hnsw),
+        ],
+        options=FtCreateOptions(data_type=DataType.JSON, prefixes=[<span class="string">"mem:"</span>]),
+    )
+    print(<span class="string">"✅ Index created"</span>)</code></pre>
+
+<div class="callout">
+<p><strong>Key Insight:</strong> <code>FT.CREATE ON JSON</code> indexes fields inside JSON documents. The HNSW algorithm provides approximate nearest-neighbor search with ~99% recall at sub-millisecond latency. Once created, the index automatically updates as you add/remove documents.</p>
+</div>
+
+<h2>Step 3: Store Messages with Embeddings</h2>
+<pre><code><span class="keyword">import</span> json, struct, time, uuid, boto3
+<span class="keyword">from</span> glide <span class="keyword">import</span> glide_json
+
+<span class="keyword">def</span> <span class="func">get_embedding</span>(text):
+    <span class="string">"""Get embedding from Bedrock Titan."""</span>
+    bedrock = boto3.client(<span class="string">"bedrock-runtime"</span>, region_name=<span class="string">"us-west-2"</span>)
+    response = bedrock.invoke_model(
+        modelId=<span class="string">"amazon.titan-embed-text-v1"</span>,
+        body=json.dumps({<span class="string">"inputText"</span>: text}),
+    )
+    <span class="keyword">return</span> json.loads(response[<span class="string">"body"</span>].read())[<span class="string">"embedding"</span>]
+
+
+<span class="keyword">async def</span> <span class="func">store_memory</span>(client, session_id, user_id, role, content):
+    <span class="string">"""Store a message with its embedding for semantic search."""</span>
+    embedding = get_embedding(content)
+    doc_id = <span class="string">f"mem:</span>{uuid.uuid4().hex[:<span class="num">12</span>]}<span class="string">"</span>
+
+    doc = {
+        <span class="string">"session_id"</span>: session_id,
+        <span class="string">"user_id"</span>: user_id,
+        <span class="string">"role"</span>: role,
+        <span class="string">"content"</span>: content,
+        <span class="string">"timestamp"</span>: time.time(),
+        <span class="string">"embedding"</span>: embedding,
+    }
+
+    <span class="keyword">await</span> glide_json.set(client, doc_id, <span class="string">"$"</span>, json.dumps(doc))
+    <span class="keyword">return</span> doc_id</code></pre>
+
+<h2>Step 4: Search by Meaning</h2>
+<pre><code><span class="keyword">async def</span> <span class="func">search_memory</span>(client, query, limit=<span class="num">5</span>, user_id=<span class="keyword">None</span>):
+    <span class="string">"""Find semantically similar messages across all sessions."""</span>
+    <span class="keyword">from</span> glide <span class="keyword">import</span> FtSearchOptions
+
+    query_embedding = get_embedding(query)
+    vec_bytes = struct.pack(<span class="string">f"&lt;</span>{len(query_embedding)}<span class="string">f"</span>, *query_embedding)
+
+    <span class="comment"># Build filter — optionally scope to a user</span>
+    filter_expr = <span class="string">"*"</span>
+    <span class="keyword">if</span> user_id:
+        filter_expr = <span class="string">f"@user_id:{{{user_id}}}"</span>
+
+    query_str = <span class="string">f"(</span>{filter_expr}<span class="string">)==&gt;[KNN </span>{limit}<span class="string"> @embedding $vec AS score]"</span>
+
+    result = <span class="keyword">await</span> ft.search(
+        client, <span class="string">"memory_idx"</span>, query_str,
+        options=FtSearchOptions(params={<span class="string">"vec"</span>: vec_bytes}),
+    )
+
+    <span class="comment"># Parse results</span>
+    memories = []
+    <span class="keyword">if</span> result <span class="keyword">and</span> len(result) >= <span class="num">2</span>:
+        <span class="keyword">for</span> key, fields <span class="keyword">in</span> result[<span class="num">1</span>].items():
+            doc = json.loads(fields[<span class="string">b"$"</span>])
+            score = <span class="num">1.0</span> - float(fields.get(<span class="string">b"score"</span>, <span class="num">1</span>))
+            memories.append({
+                <span class="string">"content"</span>: doc[<span class="string">"content"</span>],
+                <span class="string">"session_id"</span>: doc[<span class="string">"session_id"</span>],
+                <span class="string">"role"</span>: doc[<span class="string">"role"</span>],
+                <span class="string">"score"</span>: round(score, <span class="num">3</span>),
+            })
+    <span class="keyword">return</span> memories</code></pre>
+
+<h2>Step 5: Put It Together</h2>
+<pre><code><span class="keyword">async def</span> <span class="func">demo</span>():
+    config = GlideClientConfiguration([NodeAddress(<span class="string">"localhost"</span>, <span class="num">6379</span>)])
+    client = <span class="keyword">await</span> GlideClient.create(config)
+
+    <span class="keyword">await</span> create_memory_index(client)
+
+    <span class="comment"># Store memories from different sessions</span>
+    <span class="keyword">await</span> store_memory(client, <span class="string">"sess_1"</span>, <span class="string">"alice"</span>, <span class="string">"user"</span>,
+        <span class="string">"We deployed to ECS using a blue-green strategy"</span>)
+    <span class="keyword">await</span> store_memory(client, <span class="string">"sess_2"</span>, <span class="string">"alice"</span>, <span class="string">"assistant"</span>,
+        <span class="string">"Valkey HNSW index provides sub-millisecond vector search"</span>)
+    <span class="keyword">await</span> store_memory(client, <span class="string">"sess_3"</span>, <span class="string">"alice"</span>, <span class="string">"user"</span>,
+        <span class="string">"Our CI/CD pipeline runs on CodePipeline with canary deploys"</span>)
+
+    <span class="comment"># Search across all sessions</span>
+    results = <span class="keyword">await</span> search_memory(client, <span class="string">"How do I deploy my service?"</span>)
+    print(<span class="string">"🔍 Results for 'How do I deploy my service?':"</span>)
+    <span class="keyword">for</span> r <span class="keyword">in</span> results:
+        print(<span class="string">f"   [{r['score']:.3f}] ({r['session_id']}) {r['content']}"</span>)
+
+    <span class="comment"># Output:</span>
+    <span class="comment"># [0.847] (sess_1) We deployed to ECS using a blue-green strategy</span>
+    <span class="comment"># [0.812] (sess_3) Our CI/CD pipeline runs on CodePipeline with canary deploys</span>
+    <span class="comment"># [0.234] (sess_2) Valkey HNSW index provides sub-millisecond vector search</span></code></pre>
+
+<div class="callout">
+<p><strong>Notice:</strong> The query "How do I deploy?" matched messages about "blue-green strategy" and "CI/CD pipeline" — completely different words, but semantically related. This is the power of vector search. And it found them across different sessions.</p>
+</div>
+
+<h2>Valkey Commands Reference</h2>
+<table>
+<tr><th>Operation</th><th>Command</th><th>Latency</th></tr>
+<tr><td>Create index</td><td><code>FT.CREATE memory_idx ON JSON ...</code></td><td>~5ms (once)</td></tr>
+<tr><td>Store memory</td><td><code>JSON.SET mem:{id} $ '{...}'</code></td><td>~0.2ms</td></tr>
+<tr><td>Semantic search</td><td><code>FT.SEARCH memory_idx "(*)==>[KNN 5 ...]"</code></td><td>~1-3ms</td></tr>
+<tr><td>Delete memory</td><td><code>DEL mem:{id}</code></td><td>~0.1ms</td></tr>
+<tr><td>List indexes</td><td><code>FT._LIST</code></td><td>~0.1ms</td></tr>
+</table>
+
+<h2>Filtering: Scope + Semantic</h2>
+<p>Combine vector search with metadata filters in a single query:</p>
+<pre><code><span class="comment"># Only search alice's messages</span>
+<span class="string">"(@user_id:{alice})==&gt;[KNN 5 @embedding $vec AS score]"</span>
+
+<span class="comment"># Only search assistant responses</span>
+<span class="string">"(@role:{assistant})==&gt;[KNN 5 @embedding $vec AS score]"</span>
+
+<span class="comment"># Only search a specific session</span>
+<span class="string">"(@session_id:{sess_1})==&gt;[KNN 5 @embedding $vec AS score]"</span></code></pre>
+<p>Filters are applied <em>before</em> the vector search, so they're fast — Valkey only computes distances for matching documents.</p>
+
+<div class="callout">
+<p><strong>What's Next:</strong> Semantic memory finds relevant past conversations. But what about avoiding redundant LLM calls? In the next cookbook, we'll build a semantic cache that returns cached responses when a similar question was already answered.</p>
+</div>
+
+<div class="nav-prev-next">
+<a href="02-session-management.html">
+<span class="label">← Previous</span>
+<span class="title">02 — Session Management</span>
+</a>
+<a href="04-semantic-caching.html" class="next">
+<span class="label">Next →</span>
+<span class="title">04 — Semantic Caching</span>
+</a>
+</div>
+</article>
+</body>
+</html>

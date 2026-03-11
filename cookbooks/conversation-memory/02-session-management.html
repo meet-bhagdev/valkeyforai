@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>02 Session Management — Conversation Memory — Valkey for AI</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../cookbook.css">
+</head>
+<body>
+<nav class="nav"><div class="nav-inner">
+<a href="/" class="nav-logo"><img src="/valkey-logo.svg" alt="Valkey"><span class="accent">for ai</span></a>
+<div class="nav-links"><a href="/#use-cases">Use Cases</a><a href="/cookbooks/conversation-memory/">Cookbooks</a><a href="https://github.com/meet-bhagdev/valkeyforai" target="_blank">GitHub</a></div>
+</div></nav>
+
+<article>
+<div class="breadcrumb"><a href="/">Home</a> → <a href="/cookbooks/conversation-memory/">Conversation Memory</a> → 02 Session Management</div>
+<div class="meta">
+<span class="diff-mid">Intermediate</span>
+<span class="lang">Python</span>
+<span class="lang">~15 min</span>
+</div>
+
+<h1>Session Management</h1>
+<p class="lead">Track session metadata alongside conversation history. Use Valkey Hashes for user IDs, token counts, model info, and timestamps. List active sessions and implement sliding window history.</p>
+
+<h2>The Problem</h2>
+<p>Cookbook 01 stored messages in a LIST. But in production you also need to know: <em>who</em> is this session for? <em>How many tokens</em> have been used? <em>Which model</em>? <em>When</em> was the last activity? Storing this metadata alongside the conversation enables session management, billing, and debugging.</p>
+
+<h2>Data Model: Two Keys Per Session</h2>
+<pre><code><span class="comment"># Messages — LIST (same as cookbook 01)</span>
+chat:sess_abc123          → ["{"role":"user",...}", ...]
+
+<span class="comment"># Metadata — HASH (new)</span>
+meta:sess_abc123          → {
+    user_id:       "user_42",
+    model:         "claude-3-haiku",
+    created_at:    "1710000000.0",
+    last_active:   "1710003600.0",
+    message_count: "12",
+    token_count:   "4850",
+    title:         "Valkey performance questions"
+}</code></pre>
+
+<div class="callout">
+<p><strong>Key Insight:</strong> Valkey Hashes are perfect for metadata — each field is independently readable and writable. <code>HINCRBY</code> atomically increments token counts without read-modify-write races. <code>HSET</code> updates individual fields without touching others.</p>
+</div>
+
+<h2>Pattern 1: Create a Session with Metadata</h2>
+<pre><code><span class="keyword">import</span> asyncio, json, time
+<span class="keyword">from</span> glide <span class="keyword">import</span> GlideClient, GlideClientConfiguration, NodeAddress
+
+
+<span class="keyword">async def</span> <span class="func">create_session</span>(client, session_id, user_id, model=<span class="string">"claude-3-haiku"</span>):
+    meta_key = <span class="string">f"meta:</span>{session_id}<span class="string">"</span>
+    <span class="keyword">await</span> client.hset(meta_key, {
+        <span class="string">"user_id"</span>: user_id,
+        <span class="string">"model"</span>: model,
+        <span class="string">"created_at"</span>: str(time.time()),
+        <span class="string">"last_active"</span>: str(time.time()),
+        <span class="string">"message_count"</span>: <span class="string">"0"</span>,
+        <span class="string">"token_count"</span>: <span class="string">"0"</span>,
+    })
+    <span class="comment"># Both keys expire together</span>
+    <span class="keyword">await</span> client.expire(meta_key, <span class="num">86400</span>)  <span class="comment"># 24 hours</span>
+    <span class="keyword">await</span> client.expire(<span class="string">f"chat:</span>{session_id}<span class="string">"</span>, <span class="num">86400</span>)</code></pre>
+
+<h2>Pattern 2: Add Message with Token Tracking</h2>
+<pre><code><span class="keyword">async def</span> <span class="func">add_message</span>(client, session_id, role, content, tokens_used=<span class="num">0</span>):
+    chat_key = <span class="string">f"chat:</span>{session_id}<span class="string">"</span>
+    meta_key = <span class="string">f"meta:</span>{session_id}<span class="string">"</span>
+
+    <span class="comment"># Append message to conversation</span>
+    <span class="keyword">await</span> client.rpush(chat_key, [json.dumps({<span class="string">"role"</span>: role, <span class="string">"content"</span>: content})])
+
+    <span class="comment"># Update metadata atomically</span>
+    <span class="keyword">await</span> client.hincrby(meta_key, <span class="string">"message_count"</span>, <span class="num">1</span>)
+    <span class="keyword">await</span> client.hincrby(meta_key, <span class="string">"token_count"</span>, tokens_used)
+    <span class="keyword">await</span> client.hset(meta_key, {<span class="string">"last_active"</span>: str(time.time())})</code></pre>
+
+<h2>Pattern 3: Sliding Window — Keep Last N Messages</h2>
+<p>Long conversations eat context windows. Use <code>LTRIM</code> to keep only the most recent messages:</p>
+<pre><code><span class="keyword">async def</span> <span class="func">add_message_windowed</span>(client, session_id, role, content, max_messages=<span class="num">50</span>):
+    chat_key = <span class="string">f"chat:</span>{session_id}<span class="string">"</span>
+
+    <span class="comment"># Append</span>
+    <span class="keyword">await</span> client.rpush(chat_key, [json.dumps({<span class="string">"role"</span>: role, <span class="string">"content"</span>: content})])
+
+    <span class="comment"># Trim to last N messages — O(1) for small trims</span>
+    <span class="keyword">await</span> client.ltrim(chat_key, -max_messages, -<span class="num">1</span>)</code></pre>
+
+<div class="callout">
+<p><strong>Why LTRIM?</strong> Unlike deleting and re-inserting, <code>LTRIM</code> removes elements from the head of the list in-place. Combined with <code>RPUSH</code>, it creates a fixed-size sliding window with zero overhead.</p>
+</div>
+
+<h2>Pattern 4: List Active Sessions for a User</h2>
+<pre><code><span class="keyword">async def</span> <span class="func">list_user_sessions</span>(client, user_id):
+    <span class="string">"""Find all active sessions for a user using SCAN."""</span>
+    sessions = []
+    cursor = <span class="string">"0"</span>
+    <span class="keyword">while True</span>:
+        cursor, keys = <span class="keyword">await</span> client.scan(cursor, match=<span class="string">"meta:*"</span>, count=<span class="num">100</span>)
+        <span class="keyword">for</span> key <span class="keyword">in</span> keys:
+            uid = <span class="keyword">await</span> client.hget(key, <span class="string">"user_id"</span>)
+            <span class="keyword">if</span> uid <span class="keyword">and</span> uid.decode() == user_id:
+                meta = <span class="keyword">await</span> client.hgetall(key)
+                sessions.append({
+                    k.decode(): v.decode() <span class="keyword">for</span> k, v <span class="keyword">in</span> meta.items()
+                })
+        <span class="keyword">if</span> cursor == <span class="num">0</span>:
+            <span class="keyword">break</span>
+    <span class="keyword">return</span> sessions</code></pre>
+
+<p><strong>Production tip:</strong> For large-scale deployments, maintain a per-user session index with a SET: <code>SADD user_sessions:{user_id} {session_id}</code>. This avoids scanning all keys.</p>
+
+<h2>Pattern 5: Get Session Summary</h2>
+<pre><code><span class="keyword">async def</span> <span class="func">get_session_info</span>(client, session_id):
+    meta = <span class="keyword">await</span> client.hgetall(<span class="string">f"meta:</span>{session_id}<span class="string">"</span>)
+    msg_count = <span class="keyword">await</span> client.llen(<span class="string">f"chat:</span>{session_id}<span class="string">"</span>)
+    ttl = <span class="keyword">await</span> client.ttl(<span class="string">f"meta:</span>{session_id}<span class="string">"</span>)
+
+    <span class="keyword">return</span> {
+        <span class="string">"session_id"</span>: session_id,
+        <span class="string">"metadata"</span>: {k.decode(): v.decode() <span class="keyword">for</span> k, v <span class="keyword">in</span> meta.items()},
+        <span class="string">"messages_stored"</span>: msg_count,
+        <span class="string">"expires_in_seconds"</span>: ttl,
+    }</code></pre>
+
+<h2>Valkey Commands Reference</h2>
+<table>
+<tr><th>Operation</th><th>Command</th><th>Latency</th></tr>
+<tr><td>Create session metadata</td><td><code>HSET meta:{id} field1 val1 ...</code></td><td>~0.1ms</td></tr>
+<tr><td>Increment token count</td><td><code>HINCRBY meta:{id} token_count 150</code></td><td>~0.1ms</td></tr>
+<tr><td>Update single field</td><td><code>HSET meta:{id} last_active 1710...</code></td><td>~0.1ms</td></tr>
+<tr><td>Get all metadata</td><td><code>HGETALL meta:{id}</code></td><td>~0.1ms</td></tr>
+<tr><td>Get one field</td><td><code>HGET meta:{id} token_count</code></td><td>~0.1ms</td></tr>
+<tr><td>Trim conversation</td><td><code>LTRIM chat:{id} -50 -1</code></td><td>~0.1ms</td></tr>
+<tr><td>Scan for sessions</td><td><code>SCAN 0 MATCH meta:* COUNT 100</code></td><td>~1ms</td></tr>
+</table>
+
+<div class="callout">
+<p><strong>What's Next:</strong> Messages are stored, sessions are tracked. But how do you find <em>relevant</em> past conversations? In the next cookbook, we'll add semantic memory — vector search over conversation history using Valkey's FT.SEARCH.</p>
+</div>
+
+<div class="nav-prev-next">
+<a href="01-getting-started.html">
+<span class="label">← Previous</span>
+<span class="title">01 — Getting Started</span>
+</a>
+<a href="03-semantic-memory.html" class="next">
+<span class="label">Next →</span>
+<span class="title">03 — Semantic Memory</span>
+</a>
+</div>
+</article>
+</body>
+</html>
