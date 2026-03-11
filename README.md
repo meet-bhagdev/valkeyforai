@@ -2,7 +2,7 @@
 
 A practical, use-case-driven hub that helps developers understand how to use Valkey in real AI workloads. Instead of making users piece together low-level features, this site offers clear cookbooks, reference architectures, GitHub demos, and runnable projects for patterns like semantic caching, conversation memory, vector search, agent session state, rate limiting, streaming responses, and more.
 
-🌐 **Live Site**: [valkeyforai.com](https://valkeyforai.com) (or GitHub Pages URL)
+🌐 **Live Site**: [valkeyforai.com](https://main.d35f7zfvosyphf.amplifyapp.com/) (or GitHub Pages URL)
 
 ## 🎯 Goal
 
