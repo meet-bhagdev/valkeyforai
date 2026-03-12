@@ -1,0 +1,360 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Haystack + Valkey RAG Demo — Valkey for AI</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
+<style>
+*,*::before,*::after{margin:0;padding:0;box-sizing:border-box}
+:root{--bg:#0a0a0a;--card:rgba(255,255,255,.04);--brd:rgba(255,255,255,.08);--t1:#f5f5f7;--t2:rgba(245,245,247,.6);--t3:rgba(245,245,247,.4);--g1:#6366f1;--g2:#a855f7;--green:#10b981;--yellow:#f59e0b;--red:#f43f5e;--radius:12px;--font:'Inter',system-ui,sans-serif}
+html{-webkit-font-smoothing:antialiased}
+body{font-family:var(--font);background:var(--bg);color:var(--t1);line-height:1.5;min-height:100vh}
+a{color:inherit;text-decoration:none}
+.nav{position:sticky;top:0;z-index:100;background:rgba(0,0,0,.8);backdrop-filter:blur(20px);border-bottom:1px solid var(--brd);padding:16px 32px}
+.nav-inner{max-width:1200px;margin:0 auto;display:flex;align-items:center;justify-content:space-between}
+.nav-logo{display:flex;align-items:center;gap:8px;font-weight:700;font-size:16px}
+.nav-logo img{height:24px}
+.accent{color:var(--g2)}
+.nav-links{display:flex;gap:24px;font-size:14px;color:var(--t2)}
+.nav-links a:hover{color:var(--t1)}
+.container{max-width:1100px;margin:0 auto;padding:32px 24px}
+.header{text-align:center;margin-bottom:40px}
+.header h1{font-size:36px;font-weight:900;letter-spacing:-.03em;margin-bottom:8px}
+.header h1 span{background:linear-gradient(135deg,var(--g1),var(--g2));-webkit-background-clip:text;-webkit-text-fill-color:transparent}
+.header p{color:var(--t2);font-size:15px;max-width:600px;margin:0 auto}
+.stat-col{display:flex;flex-direction:column;gap:8px;margin-bottom:16px}
+.stat{background:var(--card);border:1px solid var(--brd);border-radius:8px;padding:8px 14px;display:flex;align-items:center;justify-content:space-between}
+.stat .num{font-size:18px;font-weight:900;line-height:1}
+.stat .num.g{color:var(--g1)}
+.stat .num.yellow{color:var(--yellow)}
+.stat .label{font-size:10px;color:var(--t3);text-transform:uppercase;letter-spacing:.05em;font-weight:600}
+.main-grid{display:grid;grid-template-columns:1fr 380px;gap:24px;align-items:start}
+@media(max-width:900px){.main-grid{grid-template-columns:1fr}}
+.panel{background:var(--card);border:1px solid var(--brd);border-radius:var(--radius);margin-bottom:16px;overflow:hidden}
+.panel-header{padding:14px 18px;border-bottom:1px solid var(--brd);display:flex;align-items:center;justify-content:space-between}
+.panel-header h3{font-size:14px;font-weight:700}
+.panel-body{padding:16px 18px}
+.doc-list{display:flex;flex-direction:column;gap:8px}
+.doc-item{background:rgba(255,255,255,.03);border:1px solid var(--brd);border-radius:8px;padding:10px 14px;font-size:12px;color:var(--t2);cursor:default;transition:.2s;position:relative;padding-left:36px}
+.doc-item::before{content:attr(data-idx);position:absolute;left:12px;top:50%;transform:translateY(-50%);font-size:11px;font-weight:700;color:var(--g1);background:rgba(99,102,241,.12);border-radius:4px;padding:1px 5px}
+.doc-item.highlighted{border-color:rgba(99,102,241,.4);background:rgba(99,102,241,.08);color:var(--t1)}
+.doc-item .score-badge{float:right;font-size:10px;font-weight:700;color:var(--green);background:rgba(16,185,129,.12);border-radius:4px;padding:1px 6px}
+.query-input{display:flex;gap:8px;margin-bottom:12px}
+.query-input input{flex:1;background:rgba(255,255,255,.06);border:1px solid var(--brd);border-radius:8px;padding:12px 16px;color:var(--t1);font-family:var(--font);font-size:14px;outline:none;transition:.2s}
+.query-input input:focus{border-color:var(--g1)}
+.query-input input::placeholder{color:var(--t3)}
+button{background:linear-gradient(135deg,var(--g1),var(--g2));color:#fff;border:none;border-radius:8px;padding:12px 20px;font-family:var(--font);font-size:13px;font-weight:600;cursor:pointer;transition:.2s}
+button:hover{transform:translateY(-1px);box-shadow:0 4px 16px rgba(99,102,241,.3)}
+button.secondary{background:rgba(255,255,255,.06);color:var(--t1);border:1px solid var(--brd);box-shadow:none}
+button.secondary:hover{background:rgba(255,255,255,.1);transform:none}
+.quick-btns{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:16px}
+.quick-btns button{font-size:12px;padding:6px 12px}
+.pipeline-steps{display:flex;flex-direction:column;gap:6px;margin-bottom:16px}
+.step{display:flex;align-items:center;gap:10px;padding:10px 14px;border-radius:8px;border:1px solid var(--brd);background:rgba(255,255,255,.02);font-size:13px;transition:.4s}
+.step.active{border-color:rgba(99,102,241,.4);background:rgba(99,102,241,.08)}
+.step.done{border-color:rgba(16,185,129,.3);background:rgba(16,185,129,.05)}
+.step-icon{font-size:16px;min-width:24px;text-align:center}
+.step-label{flex:1;color:var(--t2)}
+.step.active .step-label,.step.done .step-label{color:var(--t1)}
+.step-time{font-size:11px;font-weight:700;color:var(--t3)}
+.step.active .step-time{color:var(--g1)}
+.step.done .step-time{color:var(--green)}
+.answer-box{background:rgba(255,255,255,.03);border:1px solid rgba(99,102,241,.2);border-radius:10px;padding:16px;font-size:14px;color:var(--t1);line-height:1.7;min-height:80px;position:relative}
+.answer-box.empty{color:var(--t3);font-style:italic}
+.answer-label{font-size:11px;font-weight:700;color:var(--g1);text-transform:uppercase;letter-spacing:.05em;margin-bottom:8px}
+.retrieved-docs{margin-top:16px}
+.retrieved-label{font-size:11px;font-weight:700;color:var(--t3);text-transform:uppercase;letter-spacing:.05em;margin-bottom:8px}
+.retrieved-item{background:rgba(255,255,255,.02);border:1px solid var(--brd);border-radius:8px;padding:10px 14px;margin-bottom:6px;font-size:12px}
+.retrieved-item .ri-score{font-size:11px;font-weight:700;color:var(--green);float:right}
+.retrieved-item .ri-text{color:var(--t2);margin-top:2px}
+.sim-bar{height:4px;background:rgba(255,255,255,.06);border-radius:2px;margin-top:6px;overflow:hidden}
+.sim-fill{height:100%;border-radius:2px;background:linear-gradient(90deg,var(--g1),var(--g2));transition:.5s}
+.history-item{padding:10px 0;border-bottom:1px solid var(--brd);font-size:13px}
+.history-item:last-child{border-bottom:none}
+.history-q{color:var(--t2);margin-bottom:4px}
+.history-q strong{color:var(--t1)}
+.history-a{color:var(--t3);font-size:12px;line-height:1.5}
+.badge{display:inline-block;padding:2px 8px;border-radius:100px;font-size:10px;font-weight:700}
+.badge-valkey{background:rgba(99,102,241,.15);color:var(--g1)}
+.badge-llm{background:rgba(168,85,247,.15);color:var(--g2)}
+.badge-embed{background:rgba(16,185,129,.15);color:var(--green)}
+.top-k-row{display:flex;align-items:center;gap:12px;margin-bottom:16px;padding:10px 14px;background:rgba(255,255,255,.02);border-radius:8px}
+.top-k-row label{font-size:12px;color:var(--t2)}
+.top-k-row input[type=range]{flex:1;accent-color:var(--g1)}
+.top-k-row .val{font-size:13px;font-weight:700;color:var(--g1);min-width:20px}
+</style>
+</head>
+<body>
+<nav class="nav"><div class="nav-inner">
+<a href="/" class="nav-logo"><img src="/valkey-logo.svg" alt="Valkey"><span class="accent">for ai</span></a>
+<div class="nav-links"><a href="/#use-cases">Use Cases</a><a href="/cookbooks/haystack/">Cookbooks</a><a href="https://github.com/meet-bhagdev/valkeyforai/tree/main" target="_blank">GitHub</a></div>
+</div></nav>
+
+<div class="container">
+<div class="header">
+<h1>Haystack + <span>Valkey</span> RAG Demo</h1>
+<p>Valkey's sub-millisecond vector retrieval powers RAG pipelines that return grounded answers without the latency cost. Ask a question and see how fast context lands.</p>
+</div>
+
+<div class="main-grid">
+<!-- Left: query input + answer -->
+<div>
+<div class="panel">
+<div class="panel-header"><h3>💬 Ask a Question</h3></div>
+<div class="panel-body">
+<div class="query-input">
+<input id="queryInput" placeholder="Ask anything about Valkey or AI..." value="How does Valkey handle vector search?">
+<button onclick="runQuery()">Ask</button>
+</div>
+<div class="quick-btns">
+<button class="secondary" onclick="setQ('How does Valkey handle vector search?')">Vector search</button>
+<button class="secondary" onclick="setQ('What is semantic caching?')">Semantic cache</button>
+<button class="secondary" onclick="setQ('How do I use Valkey with Haystack?')">Haystack integration</button>
+<button class="secondary" onclick="setQ('What data structures does Valkey support?')">Data structures</button>
+<button class="secondary" onclick="setQ('How fast is Valkey?')">Performance</button>
+</div>
+<div class="top-k-row">
+<label>top_k (docs to retrieve):</label>
+<input type="range" id="topkSlider" min="1" max="5" step="1" value="3" oninput="document.getElementById('topkVal').textContent=this.value">
+<span class="val" id="topkVal">3</span>
+</div>
+</div>
+</div>
+
+<div class="panel">
+<div class="panel-header"><h3>💡 Answer <span class="badge badge-llm">gpt-4o</span></h3></div>
+<div class="panel-body">
+<div class="answer-box empty" id="answerBox">Run a query to see the generated answer.</div>
+</div>
+</div>
+
+<div class="panel">
+<div class="panel-header"><h3>📄 Retrieved Documents</h3></div>
+<div class="panel-body">
+<div class="retrieved-docs" id="retrievedDocs"><span style="color:var(--t3);font-size:13px">Run a query to see retrieved documents.</span></div>
+</div>
+</div>
+
+<div class="panel">
+<div class="panel-header"><h3>🗃️ Valkey Document Store <span class="badge badge-valkey">ValkeyDocumentStore</span></h3></div>
+<div class="panel-body">
+<div style="font-size:11px;color:var(--t3);margin-bottom:10px">10 documents indexed · 1536-dim embeddings · cosine similarity</div>
+<div class="doc-list" id="docList"></div>
+</div>
+</div>
+</div>
+
+<!-- Right: metrics + pipeline + query log -->
+<div>
+<div class="stat-col">
+<div class="stat"><div class="label">Queries</div><div class="num g" id="statQueries">0</div></div>
+<div class="stat"><div class="label">Avg Retrieval</div><div class="num yellow" id="statAvgLatency">—</div></div>
+</div>
+
+<div class="panel">
+<div class="panel-header"><h3>⚙️ Pipeline Execution</h3></div>
+<div class="panel-body">
+<div class="pipeline-steps" id="pipelineSteps">
+<div class="step" id="step0"><span class="step-icon">🔤</span><span class="step-label">TextEmbedder</span><span class="step-time" id="t0">—</span></div>
+<div class="step" id="step1"><span class="step-icon">🔍</span><span class="step-label">ValkeyEmbeddingRetriever</span><span class="step-time" id="t1">—</span></div>
+<div class="step" id="step2"><span class="step-icon">📝</span><span class="step-label">ChatPromptBuilder</span><span class="step-time" id="t2">—</span></div>
+<div class="step" id="step3"><span class="step-icon">🤖</span><span class="step-label">OpenAIChatGenerator</span><span class="step-time" id="t3">—</span></div>
+</div>
+</div>
+</div>
+
+<div class="panel">
+<div class="panel-header"><h3>🖥️ Query Log <span class="badge badge-valkey">live</span></h3><button class="secondary" onclick="clearLog()" style="font-size:11px;padding:4px 10px">Clear</button></div>
+<div class="panel-body">
+<div id="queryLog" style="font-family:'SF Mono','Fira Code',monospace;font-size:11px;line-height:1.8;max-height:260px;overflow-y:auto;background:rgba(0,0,0,.5);border-radius:8px;padding:12px;border:1px solid var(--brd)"><span style="color:var(--t3)">-- Waiting for query...</span></div>
+</div>
+</div>
+</div>
+</div>
+</div>
+
+<script>
+const DOCS = [
+  { id:1, text:"Valkey is an open-source, high-performance in-memory data store and the community-driven successor to Redis.", topic:"valkey-intro" },
+  { id:2, text:"Valkey supports vector search natively via the valkey-search module, enabling KNN queries with HNSW indexing.", topic:"vector-search" },
+  { id:3, text:"Semantic caching stores LLM responses indexed by embedding similarity, returning cached answers for semantically equivalent queries.", topic:"semantic-cache" },
+  { id:4, text:"The ValkeyDocumentStore integrates directly with Haystack pipelines as a first-class document store component.", topic:"haystack" },
+  { id:5, text:"ValkeyEmbeddingRetriever performs cosine similarity KNN search against stored document embeddings in sub-millisecond time.", topic:"haystack" },
+  { id:6, text:"Valkey supports strings, hashes, lists, sets, sorted sets, streams, and HyperLogLog data structures.", topic:"data-structures" },
+  { id:7, text:"Valkey achieves sub-millisecond read and write latency by storing all data in RAM with optional persistence via RDB and AOF.", topic:"performance" },
+  { id:8, text:"Rate limiting with Valkey uses atomic INCR and EXPIRE commands to track request counts per user per time window.", topic:"rate-limiting" },
+  { id:9, text:"Haystack pipelines are composable — swap any component (embedder, retriever, generator) without rewriting the rest.", topic:"haystack" },
+  { id:10, text:"Valkey Streams enable real-time pub/sub and event sourcing patterns for AI agent communication and task queuing.", topic:"streams" },
+];
+
+// Topic similarity matrix — simulates cosine distance between query topics and doc topics
+const TOPIC_SCORES = {
+  "vector-search":   {"vector-search":0.97,"haystack":0.72,"semantic-cache":0.65,"valkey-intro":0.60,"performance":0.55,"data-structures":0.40,"rate-limiting":0.30,"streams":0.25},
+  "semantic-cache":  {"semantic-cache":0.97,"vector-search":0.68,"haystack":0.60,"valkey-intro":0.55,"performance":0.45,"rate-limiting":0.40,"data-structures":0.25,"streams":0.20},
+  "haystack":        {"haystack":0.97,"vector-search":0.75,"semantic-cache":0.65,"valkey-intro":0.55,"performance":0.45,"data-structures":0.35,"rate-limiting":0.25,"streams":0.20},
+  "data-structures": {"data-structures":0.97,"valkey-intro":0.70,"performance":0.55,"streams":0.50,"rate-limiting":0.45,"vector-search":0.30,"haystack":0.25,"semantic-cache":0.20},
+  "performance":     {"performance":0.97,"valkey-intro":0.72,"data-structures":0.55,"vector-search":0.50,"haystack":0.45,"streams":0.40,"rate-limiting":0.35,"semantic-cache":0.30},
+};
+
+const ANSWERS = {
+  "vector-search": "Valkey handles vector search through the valkey-search module, which provides HNSW (Hierarchical Navigable Small World) indexing for approximate nearest neighbor queries. You create a vector index with FT.CREATE, store embeddings as hash fields, and query with FT.SEARCH using the KNN syntax. In Haystack, the ValkeyEmbeddingRetriever wraps this into a pipeline component that takes a query embedding and returns the top-k most similar documents in sub-millisecond time.",
+  "semantic-cache": "Semantic caching stores LLM responses keyed by the semantic meaning of the prompt rather than the exact text. When a new query arrives, its embedding is compared against cached embeddings using cosine similarity. If the distance is below a threshold, the cached response is returned — saving the LLM call entirely. This reduces latency from seconds to milliseconds and cuts API costs significantly for repeated or similar queries.",
+  "haystack": "Haystack integrates with Valkey through two components: ValkeyDocumentStore and ValkeyEmbeddingRetriever. The document store holds your documents and their embeddings in Valkey. The retriever performs KNN similarity search at query time. You wire them into a Haystack Pipeline alongside an embedder and a chat generator to build a full RAG pipeline — embed query → retrieve from Valkey → build prompt → generate answer.",
+  "data-structures": "Valkey supports a rich set of data structures: Strings for simple key-value storage, Hashes for structured objects, Lists for ordered sequences, Sets for unique collections, Sorted Sets for ranked data, Streams for event logs and pub/sub, and HyperLogLog for approximate cardinality counting. For AI workloads, Hashes are commonly used to store document embeddings alongside metadata.",
+  "performance": "Valkey achieves sub-millisecond latency by keeping all data in RAM. Reads and writes typically complete in under 1ms. For vector search, HNSW indexing enables approximate KNN queries in O(log n) time. Valkey also supports I/O threading for network operations and can handle hundreds of thousands of operations per second on a single node.",
+};
+
+function inferTopic(query) {
+  const q = query.toLowerCase();
+  if (q.includes("vector") || q.includes("knn") || q.includes("similarity") || q.includes("search") || q.includes("embedding")) return "vector-search";
+  if (q.includes("semantic") || q.includes("cache") || q.includes("cach")) return "semantic-cache";
+  if (q.includes("haystack") || q.includes("pipeline") || q.includes("retriev") || q.includes("rag")) return "haystack";
+  if (q.includes("data structure") || q.includes("hash") || q.includes("list") || q.includes("set") || q.includes("stream")) return "data-structures";
+  if (q.includes("fast") || q.includes("latency") || q.includes("performance") || q.includes("speed") || q.includes("ms")) return "performance";
+  return "haystack"; // default
+}
+
+let queryCount = 0, totalLatency = 0, totalScore = 0, history = [];
+
+function renderDocs(highlighted = [], scores = {}) {
+  const el = document.getElementById("docList");
+  el.innerHTML = DOCS.map(d => {
+    const isHit = highlighted.includes(d.id);
+    const score = scores[d.id];
+    return `<div class="doc-item ${isHit ? "highlighted" : ""}" data-idx="${d.id}">
+      ${isHit ? `<span class="score-badge">${score.toFixed(3)}</span>` : ""}
+      ${d.text.slice(0, 80)}...
+    </div>`;
+  }).join("");
+}
+
+function setStep(idx, state, time) {
+  const el = document.getElementById("step" + idx);
+  const tel = document.getElementById("t" + idx);
+  el.className = "step " + state;
+  tel.textContent = time || "—";
+}
+
+function resetSteps() {
+  for (let i = 0; i < 4; i++) setStep(i, "", "—");
+}
+
+async function runQuery() {
+  const query = document.getElementById("queryInput").value.trim();
+  if (!query) return;
+  const topK = parseInt(document.getElementById("topkSlider").value);
+
+  resetSteps();
+  renderDocs();
+  document.getElementById("answerBox").className = "answer-box empty";
+  document.getElementById("answerBox").textContent = "Running pipeline...";
+  document.getElementById("retrievedDocs").innerHTML = "";
+
+  const topic = inferTopic(query);
+  const scores = TOPIC_SCORES[topic] || TOPIC_SCORES["haystack"];
+
+  logLine(`# pipeline.run(data={"embedder": {"text": "${query.slice(0,40)}..."}})`, "var(--t3)");
+
+  // Step 0: embed query
+  setStep(0, "active", "...");
+  logLine(`embedder.run(text="${query.slice(0,40)}...")`, "var(--g1)");
+  await delay(300 + rand(200));
+  const embedTime = (8 + rand(6)).toFixed(0);
+  setStep(0, "done", embedTime + "ms");
+  logLine(`→ {"embedding": [0.021, -0.143, 0.887, ...]}  # 1536-dim  ${embedTime}ms`, "var(--t3)");
+
+  // Step 1: retrieval via ValkeyDocumentStore
+  setStep(1, "active", "...");
+  logLine(`retriever.run(query_embedding=embedding, top_k=${topK})`, "var(--green)");
+  logLine(`  → document_store.embedding_retrieval(query_embedding=..., top_k=${topK}, filters=None)`, "var(--green)");
+  await delay(200 + rand(150));
+  const retrievalTime = (1 + rand(3)).toFixed(1);
+  setStep(1, "done", retrievalTime + "ms");
+
+  const docScores = DOCS.map(d => ({
+    ...d,
+    score: (scores[d.topic] || 0.2) + (Math.random() - 0.5) * 0.05
+  })).sort((a, b) => b.score - a.score).slice(0, topK);
+
+  const scoreMap = {};
+  docScores.forEach(d => scoreMap[d.id] = d.score);
+  renderDocs(docScores.map(d => d.id), scoreMap);
+  logLine(`→ {"documents": [${topK} Document objects]}  # ${retrievalTime}ms`, "var(--t3)");
+  docScores.forEach(d => logLine(`   Document(id="${d.id}", score=${d.score.toFixed(4)}, content="${d.text.slice(0,45)}...")`, "var(--t3)"));
+
+  // Step 2: build prompt
+  setStep(2, "active", "...");
+  logLine(`prompt_builder.run(query="${query.slice(0,30)}...", documents=[${topK} Documents])`, "var(--g1)");
+  await delay(100 + rand(80));
+  setStep(2, "done", "< 1ms");
+  logLine(`→ {"prompt": [ChatMessage(role=user, content="Context:\\n...")]}`, "var(--t3)");
+
+  // Step 3: LLM generation
+  setStep(3, "active", "...");
+  logLine(`generator.run(messages=[system_msg, user_msg])  # model=gpt-4o`, "var(--g1)");
+  await delay(800 + rand(600));
+  const llmTime = (900 + rand(800)).toFixed(0);
+  setStep(3, "done", llmTime + "ms");
+  logLine(`→ {"replies": [ChatMessage(role=assistant, content="...")]}  # ${llmTime}ms`, "var(--t3)");
+
+  // Show answer
+  const answer = ANSWERS[topic] || ANSWERS["haystack"];
+  const answerEl = document.getElementById("answerBox");
+  answerEl.className = "answer-box";
+  answerEl.textContent = "";
+  await typeAnswer(answerEl, answer);
+
+  // Show retrieved docs
+  const rdEl = document.getElementById("retrievedDocs");
+  rdEl.innerHTML = `<div class="retrieved-label">Retrieved Documents <span class="badge badge-valkey">top_k=${topK}</span></div>` +
+    docScores.map((d, i) => `
+      <div class="retrieved-item">
+        <span class="ri-score">score: ${d.score.toFixed(3)}</span>
+        <strong>Doc ${d.id}</strong>
+        <div class="ri-text">${d.text}</div>
+        <div class="sim-bar"><div class="sim-fill" style="width:${(d.score * 100).toFixed(0)}%"></div></div>
+      </div>`).join("");
+
+  // Update stats
+  queryCount++;
+  totalLatency += parseFloat(retrievalTime);
+  totalScore += docScores[0].score;
+  document.getElementById("statQueries").textContent = queryCount;
+  document.getElementById("statAvgLatency").textContent = (totalLatency / queryCount).toFixed(1) + "ms";
+
+  // Add to history (kept for internal tracking)
+  history.unshift({ q: query, a: answer.slice(0, 120) + "..." });
+}
+
+async function typeAnswer(el, text) {
+  el.textContent = "";
+  const words = text.split(" ");
+  for (const word of words) {
+    el.textContent += (el.textContent ? " " : "") + word;
+    await delay(18);
+  }
+}
+
+function clearLog() {
+  document.getElementById("queryLog").innerHTML = '<span style="color:var(--t3)">-- Waiting for query...</span>';
+}
+
+function logLine(text, color) {
+  const el = document.getElementById("queryLog");
+  if (el.querySelector("span[style*='t3']")) el.innerHTML = "";
+  const line = document.createElement("div");
+  line.style.color = color || "var(--t1)";
+  line.textContent = text;
+  el.appendChild(line);
+  el.scrollTop = el.scrollHeight;
+}
+function setQ(q) { document.getElementById("queryInput").value = q; runQuery(); }
+function delay(ms) { return new Promise(r => setTimeout(r, ms)); }
+function rand(n) { return Math.random() * n; }
+
+// Init
+renderDocs();
+</script>
+</body>
+</html>
