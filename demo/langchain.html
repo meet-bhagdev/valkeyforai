@@ -1,0 +1,251 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>LangChain Integration Demo — Valkey for AI</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
+<style>
+*,*::before,*::after{margin:0;padding:0;box-sizing:border-box}
+:root{--bg:#000;--card:rgba(255,255,255,.04);--brd:rgba(255,255,255,.08);--t1:#f5f5f7;--t2:rgba(245,245,247,.6);--t3:rgba(245,245,247,.4);--g1:#f59e0b;--g2:#f97316;--green:#10b981;--red:#f43f5e;--yellow:#f59e0b;--blue:#38bdf8;--font:'Inter',system-ui,sans-serif}
+html{-webkit-font-smoothing:antialiased}
+body{font-family:var(--font);background:var(--bg);color:var(--t1);line-height:1.6;min-height:100vh}
+a{color:inherit;text-decoration:none}
+.nav{position:sticky;top:0;z-index:100;background:rgba(0,0,0,.8);backdrop-filter:blur(20px);border-bottom:1px solid var(--brd);padding:16px 32px}
+.nav-inner{max-width:1200px;margin:0 auto;display:flex;align-items:center;justify-content:space-between}
+.nav-logo{display:flex;align-items:center;gap:8px;font-weight:700;font-size:16px}
+.accent{color:var(--g2)}
+.nav-links{display:flex;gap:24px;font-size:14px;color:var(--t2)}
+.nav-links a:hover{color:var(--t1)}
+.container{max-width:1200px;margin:0 auto;padding:24px}
+.header{text-align:center;padding:24px 0 16px}
+.header h1{font-size:28px;font-weight:800;letter-spacing:-.03em}
+.header h1 span{background:linear-gradient(135deg,var(--g1),var(--g2));-webkit-background-clip:text;-webkit-text-fill-color:transparent}
+.header p{color:var(--t3);font-size:14px;margin-top:4px}
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:16px}
+.panel{background:var(--card);border:1px solid var(--brd);border-radius:16px;overflow:hidden;display:flex;flex-direction:column}
+.panel-head{padding:12px 16px;border-bottom:1px solid var(--brd);font-weight:600;font-size:14px;display:flex;justify-content:space-between;align-items:center}
+.panel-body{padding:12px 16px;overflow-y:auto;flex:1;max-height:420px}
+.panel-foot{padding:10px 16px;border-top:1px solid var(--brd);display:flex;gap:8px}
+.msg{margin-bottom:10px;display:flex;flex-direction:column}
+.msg.user{align-items:flex-end}
+.msg.assistant{align-items:flex-start}
+.msg .bubble{max-width:80%;padding:8px 14px;border-radius:14px;font-size:13px;line-height:1.5}
+.msg.user .bubble{background:var(--g1);color:#000;border-bottom-right-radius:4px}
+.msg.assistant .bubble{background:rgba(255,255,255,.08);color:var(--t1);border-bottom-left-radius:4px}
+.msg .meta{font-size:10px;color:var(--t3);margin-top:2px;padding:0 4px}
+.badge-hit{display:inline-block;padding:2px 8px;border-radius:100px;font-size:10px;font-weight:700;background:rgba(16,185,129,.15);color:var(--green)}
+.badge-miss{display:inline-block;padding:2px 8px;border-radius:100px;font-size:10px;font-weight:700;background:rgba(244,63,94,.15);color:var(--red)}
+.cmd{padding:6px 10px;margin-bottom:4px;border-radius:8px;font-size:12px;font-family:'SF Mono','Fira Code',monospace;background:rgba(245,158,11,.06);border-left:3px solid var(--g1)}
+.cmd.search{border-left-color:var(--blue)}
+.cmd.hit{border-left-color:var(--green)}
+.cmd.miss{border-left-color:var(--red)}
+.cmd .ts{color:var(--t3);margin-right:6px}
+.cmd .latency{color:var(--yellow);float:right}
+.stats{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:16px}
+.stat{text-align:center;background:var(--card);border:1px solid var(--brd);border-radius:12px;padding:12px 8px}
+.stat .val{font-size:28px;font-weight:800;color:var(--g1)}
+.stat .lbl{font-size:11px;color:var(--t3);margin-top:2px}
+button{padding:8px 16px;border-radius:8px;border:none;cursor:pointer;font-size:12px;font-weight:600;transition:.15s}
+.btn-primary{background:linear-gradient(135deg,var(--g1),var(--g2));color:#000}
+.btn-secondary{background:rgba(255,255,255,.06);color:var(--t2);border:1px solid var(--brd)}
+.btn-danger{background:rgba(244,63,94,.15);color:var(--red);border:1px solid rgba(244,63,94,.2)}
+button:hover{transform:translateY(-1px);filter:brightness(1.1)}
+input[type=text]{background:rgba(255,255,255,.04);border:1px solid var(--brd);color:var(--t1);padding:8px 12px;border-radius:8px;font-size:13px;flex:1;font-family:var(--font)}
+input[type=text]::placeholder{color:var(--t3)}
+.empty{color:var(--t3);text-align:center;padding:24px;font-size:13px}
+@media(max-width:768px){.grid{grid-template-columns:1fr}.stats{grid-template-columns:repeat(2,1fr)}}
+</style>
+</head>
+<body>
+<nav class="nav"><div class="nav-inner">
+<a href="/" class="nav-logo"><img src="/valkey-logo.svg" alt="Valkey" height="24"><span class="accent">for ai</span></a>
+<div class="nav-links"><a href="/#use-cases">Use Cases</a><a href="/cookbooks/langchain/">Cookbooks</a><a href="/#frameworks">Frameworks</a><a href="https://github.com/langchain-ai/langchain-aws" target="_blank">GitHub</a></div>
+</div></nav>
+
+<div class="container">
+<div class="header">
+<h1>Interactive <span>LangChain + Valkey</span> Demo</h1>
+<p>IT Help Desk with semantic caching — watch ValkeyStore, ValkeyCache, and ValkeySaver fire in real-time. No backend — all simulated client-side.</p>
+</div>
+
+<div class="stats">
+<div class="stat"><div class="val" id="queryCount">0</div><div class="lbl">Queries Processed</div></div>
+<div class="stat"><div class="val" id="hitRate">0%</div><div class="lbl">Cache Hit Rate</div></div>
+<div class="stat"><div class="val" id="avgLatency">0</div><div class="lbl">Avg Latency (ms)</div></div>
+<div class="stat"><div class="val" id="costSaved">$0.00</div><div class="lbl">Cost Saved</div></div>
+</div>
+
+<div class="grid">
+<div class="panel" style="min-height:450px">
+<div class="panel-head">💬 IT Help Desk Chat <span style="color:var(--t3);font-size:12px" id="scenarioLabel">Scenario 1/4</span></div>
+<div class="panel-body" id="chatArea"><div class="empty">Starting auto-demo...</div></div>
+<div class="panel-foot">
+<input type="text" id="chatInput" placeholder="Ask a question..." onkeydown="if(event.key==='Enter')sendMessage()">
+<button class="btn-primary" onclick="sendMessage()">Send</button>
+</div>
+</div>
+
+<div class="panel" style="min-height:450px">
+<div class="panel-head">⚡ LangChain + Valkey Commands <span style="color:var(--t3);font-size:12px" id="cmdCount">0 commands</span></div>
+<div class="panel-body" id="cmdLog"><div class="empty">Commands will appear here...</div></div>
+<div class="panel-foot">
+<button class="btn-primary" onclick="runAutoDemo()">▶ Auto Demo</button>
+<button class="btn-danger" onclick="clearAll()">↺ Reset</button>
+</div>
+</div>
+</div>
+</div>
+
+<script>
+let chatEl,cmdEl,queries=0,hits=0,totalLatency=0,totalCost=0,cmdTotal=0,scenarioIdx=0,demoRunning=false;
+
+const SCENARIOS=[
+  {name:"Password Reset",questions:[
+    {q:"How do I reset my password?",isOriginal:true},
+    {q:"I forgot my password, help!",isOriginal:false},
+    {q:"Password reset instructions?",isOriginal:false}
+  ],answer:"Go to portal.company.com → Click 'Forgot Password' → Enter your email → Check inbox for reset link → Create new password (min 12 chars)."},
+  {name:"VPN Setup",questions:[
+    {q:"How do I connect to the VPN?",isOriginal:true},
+    {q:"VPN setup instructions please",isOriginal:false},
+    {q:"Can't connect to company network remotely",isOriginal:false}
+  ],answer:"Download GlobalProtect from IT Portal → Install → Enter server: vpn.company.com → Sign in with SSO credentials → Click Connect."},
+  {name:"Software Install",questions:[
+    {q:"How do I install Slack on my laptop?",isOriginal:true},
+    {q:"Where to download Slack?",isOriginal:false},
+    {q:"Need Slack on my work computer",isOriginal:false}
+  ],answer:"Open Software Center (Windows) or Self Service (Mac) → Search 'Slack' → Click Install → Sign in with your company email."},
+  {name:"Monitor Setup",questions:[
+    {q:"My external monitor won't connect",isOriginal:true},
+    {q:"How to set up dual monitors?",isOriginal:false},
+    {q:"Second display not detected",isOriginal:false}
+  ],answer:"Check cable connection (USB-C or HDMI) → System Preferences → Displays → Click Detect Displays → Arrange monitors as needed."}
+];
+
+window.onload=()=>{
+  chatEl=document.getElementById('chatArea');
+  cmdEl=document.getElementById('cmdLog');
+  setTimeout(runAutoDemo,800);
+};
+
+function updateStats(){
+  document.getElementById('queryCount').textContent=queries;
+  document.getElementById('hitRate').textContent=queries?Math.round(hits/queries*100)+'%':'0%';
+  document.getElementById('avgLatency').textContent=queries?Math.round(totalLatency/queries):'0';
+  document.getElementById('costSaved').textContent='$'+totalCost.toFixed(3);
+  document.getElementById('cmdCount').textContent=cmdTotal+' commands';
+}
+
+function addChat(role,content,extra=''){
+  if(chatEl.querySelector('.empty'))chatEl.innerHTML='';
+  const d=document.createElement('div');
+  d.className='msg '+role;
+  d.innerHTML=`<div class="bubble">${content}</div><div class="meta">${role}${extra}</div>`;
+  chatEl.appendChild(d);
+  chatEl.scrollTop=chatEl.scrollHeight;
+}
+
+function addCmd(text,cls=''){
+  if(cmdEl.querySelector('.empty'))cmdEl.innerHTML='';
+  const d=document.createElement('div');
+  d.className='cmd '+cls;
+  const ts=new Date().toLocaleTimeString();
+  d.innerHTML=`<span class="ts">${ts}</span>${text}`;
+  cmdEl.appendChild(d);
+  cmdEl.scrollTop=cmdEl.scrollHeight;
+  cmdTotal++;
+  updateStats();
+}
+
+function sleep(ms){return new Promise(r=>setTimeout(r,ms));}
+
+async function processQuestion(q,answer,isOriginal){
+  queries++;
+  addChat('user',q);
+  await sleep(300);
+
+  // Semantic cache lookup
+  addCmd('ValkeyStore.search(("helpdesk",), query="'+q.substring(0,30)+'...", limit=1)','search');
+  await sleep(200);
+  addCmd('→ FT.SEARCH helpdesk_cache_idx "(*)==>[KNN 1 @embedding $vec]"','search');
+  await sleep(300);
+
+  if(isOriginal){
+    // Cache miss
+    const latency=3000+Math.random()*2000;
+    addCmd('→ Score: 0.00 — <span class="badge-miss">MISS</span>','miss');
+    await sleep(200);
+    addCmd('ChatBedrockConverse.invoke() — calling Claude...','miss');
+    await sleep(latency);
+    addChat('assistant',answer,' · <span class="badge-miss">MISS</span> · '+Math.round(latency)+'ms · $0.003');
+    addCmd('ValkeyStore.put(("helpdesk",), "'+q.substring(0,20)+'...", {...})','');
+    await sleep(100);
+    addCmd('→ JSON.SET store:helpdesk_cache:... $ \'{...}\'','');
+    addCmd('→ EXPIRE store:helpdesk_cache:... 3600','');
+    addCmd('ValkeySaver.put() — checkpoint conversation','');
+    await sleep(100);
+    addCmd('→ JSON.SET checkpoint:user-42:... $ \'{...}\'','');
+    totalLatency+=latency;
+    totalCost+=0; // miss costs money, no savings
+  }else{
+    // Cache hit
+    const score=(0.88+Math.random()*0.10).toFixed(3);
+    const latency=1+Math.random()*3;
+    addCmd('→ Score: '+score+' ≥ 0.90 — <span class="badge-hit">HIT</span> <span class="latency">'+latency.toFixed(1)+'ms</span>','hit');
+    await sleep(100);
+    addChat('assistant',answer,' · <span class="badge-hit">HIT</span> · '+latency.toFixed(1)+'ms · $0.000');
+    addCmd('ValkeySaver.put() — checkpoint conversation','');
+    addCmd('→ JSON.SET checkpoint:user-42:... $ \'{...}\'','');
+    totalLatency+=latency;
+    hits++;
+    totalCost+=0.003; // saved an LLM call
+  }
+  updateStats();
+}
+
+async function runAutoDemo(){
+  if(demoRunning)return;
+  demoRunning=true;
+
+  while(demoRunning){
+    const scenario=SCENARIOS[scenarioIdx%SCENARIOS.length];
+    document.getElementById('scenarioLabel').textContent=`Scenario ${(scenarioIdx%SCENARIOS.length)+1}/${SCENARIOS.length}: ${scenario.name}`;
+
+    for(const qObj of scenario.questions){
+      if(!demoRunning)return;
+      await processQuestion(qObj.q,scenario.answer,qObj.isOriginal);
+      await sleep(1500);
+    }
+
+    scenarioIdx++;
+    await sleep(3000);
+
+    // Clear chat for next scenario but keep stats
+    if(demoRunning){
+      chatEl.innerHTML='<div class="empty">Loading next scenario...</div>';
+      cmdEl.innerHTML='<div class="empty">Commands will appear here...</div>';
+      cmdTotal=0;
+      await sleep(1000);
+    }
+  }
+}
+
+function clearAll(){
+  demoRunning=false;
+  queries=0;hits=0;totalLatency=0;totalCost=0;cmdTotal=0;scenarioIdx=0;
+  chatEl.innerHTML='<div class="empty">Click Auto Demo to start</div>';
+  cmdEl.innerHTML='<div class="empty">Commands will appear here...</div>';
+  updateStats();
+}
+
+function sendMessage(){
+  const input=document.getElementById('chatInput');
+  const q=input.value.trim();
+  if(!q)return;
+  input.value='';
+  processQuestion(q,SCENARIOS[0].answer,Math.random()>0.5);
+}
+</script>
+</body>
+</html>

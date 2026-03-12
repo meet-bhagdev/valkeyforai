@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>03 Semantic Search — LangChain — Valkey for AI</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../cookbook.css">
+</head>
+<body>
+<nav class="nav"><div class="nav-inner">
+<a href="/" class="nav-logo"><img src="/valkey-logo.svg" alt="Valkey"><span class="accent">for ai</span></a>
+<div class="nav-links"><a href="/#use-cases">Use Cases</a><a href="/cookbooks/langchain/">Cookbooks</a><a href="/#frameworks">Frameworks</a><a href="https://github.com/langchain-ai/langchain-aws" target="_blank">GitHub</a></div>
+</div></nav>
+
+<article>
+<div class="breadcrumb"><a href="/">Home</a> → <a href="/cookbooks/langchain/">LangChain</a> → 03 Semantic Search</div>
+<div class="meta">
+<span class="diff-mid">Intermediate</span>
+<span class="lang">Python</span>
+<span class="lang">~20 min</span>
+</div>
+
+<h1>Semantic Search with <span class="gradient">ValkeyStore</span></h1>
+<p class="lead">Store documents with vector embeddings and search by meaning — not just exact match. Uses HNSW indexes, Amazon Titan embeddings, and <code>ValkeyStore</code>.</p>
+
+<h2>Why Semantic Search?</h2>
+<p>"How do I reset my password?" and "I forgot my password, help!" mean the same thing. Exact-match caching misses this. <code>ValkeyStore</code> uses vector similarity to match by meaning:</p>
+<ul>
+<li><strong>HNSW index</strong> — approximate nearest neighbor search with 99%+ recall</li>
+<li><strong>Microsecond latency</strong> — vector search in Valkey is sub-millisecond</li>
+<li><strong>Real-time updates</strong> — new vectors are searchable immediately, no rebuild needed</li>
+</ul>
+
+<h2>Step 1: Configure ValkeyStore</h2>
+<pre><code><span class="keyword">from</span> langgraph_checkpoint_aws <span class="keyword">import</span> ValkeyStore
+<span class="keyword">from</span> langchain_aws <span class="keyword">import</span> BedrockEmbeddings
+
+<span class="comment"># Amazon Titan embeddings — 1536 dimensions</span>
+embeddings = BedrockEmbeddings(
+    model_id=<span class="string">"amazon.titan-embed-text-v2:0"</span>,
+    region_name=<span class="string">"us-west-2"</span>,
+)
+
+<span class="comment"># ValkeyStore with HNSW vector index</span>
+store = ValkeyStore.from_conn_string(
+    <span class="string">"valkey://localhost:6379"</span>,
+    index={
+        <span class="string">"collection_name"</span>: <span class="string">"semantic_cache"</span>,
+        <span class="string">"dims"</span>: <span class="num">1536</span>,
+        <span class="string">"embed"</span>: embeddings,
+        <span class="string">"fields"</span>: [<span class="string">"text"</span>],
+        <span class="string">"index_type"</span>: <span class="string">"hnsw"</span>,
+        <span class="string">"distance_metric"</span>: <span class="string">"COSINE"</span>,
+    },
+    ttl={<span class="string">"default_ttl"</span>: <span class="num">60.0</span>},  <span class="comment"># 60 minutes</span>
+)
+store.setup()  <span class="comment"># Creates the FT index</span></code></pre>
+
+<h2>Step 2: Store Documents</h2>
+<pre><code><span class="comment"># Store a document — embedding is generated automatically</span>
+store.put(
+    (<span class="string">"help-desk"</span>, <span class="string">"passwords"</span>),  <span class="comment"># namespace</span>
+    <span class="string">"q1"</span>,                          <span class="comment"># key</span>
+    {
+        <span class="string">"text"</span>: <span class="string">"How do I reset my password?"</span>,
+        <span class="string">"answer"</span>: <span class="string">"Go to portal.company.com, click Forgot Password..."</span>,
+    },
+)
+
+store.put(
+    (<span class="string">"help-desk"</span>, <span class="string">"vpn"</span>),
+    <span class="string">"q2"</span>,
+    {
+        <span class="string">"text"</span>: <span class="string">"How do I connect to the VPN?"</span>,
+        <span class="string">"answer"</span>: <span class="string">"Download the VPN client from IT portal..."</span>,
+    },
+)</code></pre>
+
+<h2>Step 3: Search by Meaning</h2>
+<pre><code><span class="comment"># Search with a paraphrased query</span>
+results = store.search(
+    (<span class="string">"help-desk"</span>,),  <span class="comment"># namespace prefix</span>
+    query=<span class="string">"I forgot my password, help!"</span>,
+    limit=<span class="num">3</span>,
+)
+
+<span class="keyword">for</span> r <span class="keyword">in</span> results:
+    print(<span class="string">f"Score: {r.score:.3f} — {r.value['text']}"</span>)
+
+<span class="comment"># Output:</span>
+<span class="comment"># Score: 0.943 — How do I reset my password?</span>
+<span class="comment"># Score: 0.412 — How do I connect to the VPN?</span></code></pre>
+
+<div class="callout">
+<p><strong>Valkey Commands Fired:</strong></p>
+<pre><code><span class="comment"># Index creation (once)</span>
+FT.CREATE semantic_cache_idx ON JSON PREFIX 1 "store:semantic_cache:"
+  SCHEMA $.text AS text TEXT
+         $.embedding AS embedding VECTOR HNSW 6
+           TYPE FLOAT32 DIM 1536 DISTANCE_METRIC COSINE
+
+<span class="comment"># Store document</span>
+JSON.SET store:semantic_cache:help-desk:passwords:q1 $ '{...}'
+EXPIRE store:semantic_cache:help-desk:passwords:q1 3600
+
+<span class="comment"># Vector search</span>
+FT.SEARCH semantic_cache_idx
+  "(*)==>[KNN 3 @embedding $vec AS score]"
+  PARAMS 2 vec &lt;binary_vector&gt;
+  SORTBY score ASC LIMIT 0 3</code></pre>
+</div>
+
+<h2>Step 4: HNSW Tuning</h2>
+<p>Tune the index for your speed/accuracy tradeoff:</p>
+<table style="width:100%;font-size:13px;border-collapse:collapse;margin:16px 0">
+<tr style="border-bottom:1px solid var(--brd)"><th style="text-align:left;padding:8px">Parameter</th><th>Default</th><th>Higher =</th><th>Lower =</th></tr>
+<tr style="border-bottom:1px solid var(--brd)"><td style="padding:8px"><code>hnsw_m</code></td><td>16</td><td>Better recall, more memory</td><td>Faster, less memory</td></tr>
+<tr style="border-bottom:1px solid var(--brd)"><td style="padding:8px"><code>hnsw_ef_construction</code></td><td>200</td><td>Better index quality</td><td>Faster build</td></tr>
+<tr><td style="padding:8px"><code>hnsw_ef_runtime</code></td><td>10</td><td>Better search accuracy</td><td>Faster queries</td></tr>
+</table>
+<pre><code><span class="comment"># High-accuracy configuration</span>
+store = ValkeyStore.from_conn_string(
+    <span class="string">"valkey://localhost:6379"</span>,
+    index={
+        <span class="string">"collection_name"</span>: <span class="string">"precise_search"</span>,
+        <span class="string">"dims"</span>: <span class="num">1536</span>,
+        <span class="string">"embed"</span>: embeddings,
+        <span class="string">"fields"</span>: [<span class="string">"text"</span>],
+        <span class="string">"index_type"</span>: <span class="string">"hnsw"</span>,
+        <span class="string">"hnsw_m"</span>: <span class="num">32</span>,
+        <span class="string">"hnsw_ef_construction"</span>: <span class="num">400</span>,
+        <span class="string">"hnsw_ef_runtime"</span>: <span class="num">50</span>,
+    },
+)</code></pre>
+
+<h2>Next Steps</h2>
+<p>Now you have all three components: <code>ValkeySaver</code> (checkpoints), <code>ValkeyCache</code> (exact caching), and <code>ValkeyStore</code> (semantic search). Let's wire them all together.</p>
+<div style="margin-top:24px"><a href="04-full-agent.html" style="color:var(--g1);font-weight:600">Next: 04 Full Agent — All Three Components →</a></div>
+</article>
+</body>
+</html>

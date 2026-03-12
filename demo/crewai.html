@@ -1,0 +1,270 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CrewAI Agent Orchestration Demo — Valkey for AI</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
+<style>
+*,*::before,*::after{margin:0;padding:0;box-sizing:border-box}
+:root{--bg:#000;--card:rgba(255,255,255,.04);--brd:rgba(255,255,255,.08);--t1:#f5f5f7;--t2:rgba(245,245,247,.6);--t3:rgba(245,245,247,.4);--g1:#38bdf8;--g2:#818cf8;--green:#10b981;--red:#f43f5e;--yellow:#f59e0b;--orange:#f97316;--font:'Inter',system-ui,sans-serif}
+html{-webkit-font-smoothing:antialiased}
+body{font-family:var(--font);background:var(--bg);color:var(--t1);line-height:1.6;min-height:100vh}
+a{color:inherit;text-decoration:none}
+.nav{position:sticky;top:0;z-index:100;background:rgba(0,0,0,.8);backdrop-filter:blur(20px);border-bottom:1px solid var(--brd);padding:16px 32px}
+.nav-inner{max-width:1200px;margin:0 auto;display:flex;align-items:center;justify-content:space-between}
+.nav-logo{display:flex;align-items:center;gap:8px;font-weight:700;font-size:16px}
+.accent{color:var(--g2)}
+.nav-links{display:flex;gap:24px;font-size:14px;color:var(--t2)}
+.nav-links a:hover{color:var(--t1)}
+.container{max-width:1200px;margin:0 auto;padding:24px}
+.header{text-align:center;padding:24px 0 16px}
+.header h1{font-size:28px;font-weight:800;letter-spacing:-.03em}
+.header h1 span{background:linear-gradient(135deg,var(--g1),var(--g2));-webkit-background-clip:text;-webkit-text-fill-color:transparent}
+.header p{color:var(--t3);font-size:14px;margin-top:4px}
+.stats{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:16px}
+.stat{text-align:center;background:var(--card);border:1px solid var(--brd);border-radius:12px;padding:12px 8px}
+.stat .val{font-size:28px;font-weight:800;color:var(--g1)}
+.stat .lbl{font-size:11px;color:var(--t3);margin-top:2px}
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:16px}
+.panel{background:var(--card);border:1px solid var(--brd);border-radius:16px;overflow:hidden;display:flex;flex-direction:column}
+.panel-head{padding:12px 16px;border-bottom:1px solid var(--brd);font-weight:600;font-size:14px;display:flex;justify-content:space-between;align-items:center}
+.panel-body{padding:12px 16px;overflow-y:auto;flex:1;max-height:420px}
+.panel-foot{padding:10px 16px;border-top:1px solid var(--brd);display:flex;gap:8px}
+button{padding:8px 16px;border-radius:8px;border:none;cursor:pointer;font-size:12px;font-weight:600;transition:.15s}
+.btn-primary{background:linear-gradient(135deg,var(--g1),var(--g2));color:#fff}
+.btn-danger{background:rgba(244,63,94,.15);color:var(--red);border:1px solid rgba(244,63,94,.2)}
+button:hover{transform:translateY(-1px);filter:brightness(1.1)}
+.empty{color:var(--t3);text-align:center;padding:24px;font-size:13px}
+/* Agent events */
+.event{padding:10px 12px;margin-bottom:8px;border-radius:10px;font-size:13px;border-left:3px solid var(--g1);background:rgba(56,189,248,.04)}
+.event.store{border-left-color:var(--green);background:rgba(16,185,129,.04)}
+.event.recall{border-left-color:var(--g2);background:rgba(129,140,248,.04)}
+.event.task{border-left-color:var(--orange);background:rgba(249,115,22,.04)}
+.event .agent-name{font-weight:700;font-size:12px;margin-bottom:4px}
+.event .agent-name .role{color:var(--g1);margin-left:4px}
+.event .agent-name .role.researcher{color:var(--orange)}
+.event .agent-name .role.analyst{color:var(--g2)}
+.event .content{color:var(--t2);font-size:12px;line-height:1.5}
+.event .meta-row{display:flex;gap:12px;margin-top:6px;font-size:11px;color:var(--t3)}
+.event .score{color:var(--green);font-weight:700}
+.event .latency{color:var(--yellow)}
+.score-bar{height:4px;border-radius:2px;background:var(--brd);margin-top:4px;max-width:200px}
+.score-fill{height:100%;border-radius:2px;background:linear-gradient(90deg,var(--g1),var(--green))}
+/* Valkey commands */
+.cmd{padding:6px 10px;margin-bottom:4px;border-radius:8px;font-size:11px;font-family:'SF Mono','Fira Code',monospace;background:rgba(56,189,248,.04);border-left:3px solid var(--g1)}
+.cmd.json{border-left-color:var(--green)}
+.cmd.search{border-left-color:var(--g2)}
+.cmd.expire{border-left-color:var(--yellow)}
+.cmd .ts{color:var(--t3);margin-right:6px}
+.cmd .latency{color:var(--yellow);float:right}
+/* Scenario indicator */
+.scenario-bar{background:var(--card);border:1px solid var(--brd);border-radius:12px;padding:16px;margin-bottom:16px;display:flex;align-items:center;gap:16px}
+.scenario-bar .step{display:flex;align-items:center;gap:8px;font-size:13px}
+.scenario-bar .step .dot{width:10px;height:10px;border-radius:50%;background:var(--brd)}
+.scenario-bar .step .dot.active{background:var(--g1);box-shadow:0 0 8px var(--g1)}
+.scenario-bar .step .dot.done{background:var(--green)}
+.scenario-bar .label{font-size:13px;color:var(--t2);margin-left:auto}
+@media(max-width:768px){.grid{grid-template-columns:1fr}.stats{grid-template-columns:repeat(2,1fr)}}
+</style>
+</head>
+<body>
+<nav class="nav"><div class="nav-inner">
+<a href="/" class="nav-logo"><img src="/valkey-logo.svg" alt="Valkey" height="24"><span class="accent">for ai</span></a>
+<div class="nav-links"><a href="/#use-cases">Use Cases</a><a href="/cookbooks/crewai/">Cookbooks</a><a href="/#frameworks">Frameworks</a><a href="https://github.com/valkey-io" target="_blank">GitHub</a></div>
+</div></nav>
+
+<div class="container">
+<div class="header">
+<h1>Interactive <span>CrewAI + Valkey</span> Demo</h1>
+<p>Watch AI agents store knowledge, share memories, and recall patterns — all backed by Valkey vector search. No backend — simulated client-side.</p>
+</div>
+
+<div class="stats">
+<div class="stat"><div class="val" id="memCount">0</div><div class="lbl">Memories Stored</div></div>
+<div class="stat"><div class="val" id="searchCount">0</div><div class="lbl">Vector Searches</div></div>
+<div class="stat"><div class="val" id="avgScore">0.00</div><div class="lbl">Avg Recall Score</div></div>
+<div class="stat"><div class="val" id="avgLatency">0</div><div class="lbl">Avg Latency (ms)</div></div>
+</div>
+
+<div class="scenario-bar" id="scenarioBar">
+<div class="step"><div class="dot active" id="dot1"></div>Assign Task</div>
+<div class="step"><div class="dot" id="dot2"></div>Agent Works</div>
+<div class="step"><div class="dot" id="dot3"></div>Store Memory</div>
+<div class="step"><div class="dot" id="dot4"></div>Recall Memory</div>
+<div class="label" id="scenarioLabel">Scenario 1: Code Reviewer</div>
+</div>
+
+<div class="grid">
+<div class="panel" style="min-height:450px">
+<div class="panel-head">🤖 Agent Activity <span style="color:var(--t3);font-size:12px" id="agentCount">0 events</span></div>
+<div class="panel-body" id="agentLog"><div class="empty">Starting auto-demo...</div></div>
+<div class="panel-foot">
+<button class="btn-primary" onclick="runAutoDemo()">▶ Auto Demo</button>
+<button class="btn-danger" onclick="clearAll()">↺ Reset</button>
+</div>
+</div>
+
+<div class="panel" style="min-height:450px">
+<div class="panel-head">⚡ Valkey Commands <span style="color:var(--t3);font-size:12px" id="cmdCount">0 commands</span></div>
+<div class="panel-body" id="cmdLog"><div class="empty">Commands will appear here...</div></div>
+</div>
+</div>
+</div>
+
+<script>
+let agentEl,cmdEl,memCount=0,searchCount=0,totalScore=0,totalLatency=0,cmdTotal=0,eventTotal=0,running=false;
+
+const SCENARIOS=[
+  {name:"Code Reviewer — Learn & Recall",agents:[{name:"CodeReviewer",role:"reviewer"}],phases:[
+    {type:"task",agent:"CodeReviewer",text:"Review this async code for performance issues:\nasync def fetch_all(urls):\n    results = []\n    for url in urls:\n        result = await fetch(url)\n        results.append(result)\n    return results"},
+    {type:"work",agent:"CodeReviewer",text:"Identified: Sequential await in loop — should use asyncio.gather() for parallel execution. This is a common async anti-pattern."},
+    {type:"store",agent:"CodeReviewer",memory:"Sequential await anti-pattern: using 'for url in urls: await fetch(url)' instead of asyncio.gather(). Fix: results = await asyncio.gather(*[fetch(u) for u in urls])",scope:"/code-review/async"},
+    {type:"store",agent:"CodeReviewer",memory:"Performance pattern: always prefer asyncio.gather() or asyncio.as_completed() over sequential awaits when tasks are independent.",scope:"/code-review/performance"},
+    {type:"task",agent:"CodeReviewer",text:"Now review this new code:\nasync def process_batch(items):\n    for item in items:\n        await transform(item)\n        await save(item)"},
+    {type:"recall",agent:"CodeReviewer",query:"async sequential await performance",expectScore:0.94,expectMemory:"Sequential await anti-pattern"},
+    {type:"work",agent:"CodeReviewer",text:"🧠 Recalled past pattern! This has the same sequential await issue. Recommending asyncio.gather() — I've seen this before in a previous review."},
+  ]},
+  {name:"Research Team — Shared Knowledge",agents:[{name:"Researcher",role:"researcher"},{name:"Analyst",role:"analyst"}],phases:[
+    {type:"task",agent:"Researcher",text:"Research the key benefits of Valkey for vector search compared to traditional databases. Focus on performance and scalability."},
+    {type:"work",agent:"Researcher",text:"Findings: Valkey delivers sub-millisecond vector search via HNSW indexing, supports billions of vectors with 99%+ recall, and provides real-time index updates without rebuilds."},
+    {type:"store",agent:"Researcher",memory:"Valkey vector search: sub-ms latency, HNSW indexing, 99%+ recall at billion scale, real-time updates without index rebuilds.",scope:"/research/valkey"},
+    {type:"store",agent:"Researcher",memory:"Valkey vs traditional DBs: 1000x faster for vector similarity, native COSINE/L2/IP distance metrics, no ETL pipeline needed.",scope:"/research/comparison"},
+    {type:"task",agent:"Analyst",text:"Based on the team's research, recommend whether we should adopt Valkey for our AI memory system."},
+    {type:"recall",agent:"Analyst",query:"Valkey vector search performance benefits",expectScore:0.91,expectMemory:"Valkey vector search: sub-ms latency"},
+    {type:"work",agent:"Analyst",text:"🧠 Found research from Researcher! Based on the sub-ms latency and billion-scale support, strongly recommend adopting Valkey for our AI memory system."},
+  ]},
+  {name:"DevOps Agent — Incident Runbook",agents:[{name:"DevOps",role:"reviewer"}],phases:[
+    {type:"task",agent:"DevOps",text:"Document the steps to resolve a Redis connection timeout in production."},
+    {type:"work",agent:"DevOps",text:"Runbook: 1) Check ElastiCache CloudWatch metrics 2) Verify security group rules 3) Test connectivity from app subnet 4) Check max-connections limit 5) Review slow log"},
+    {type:"store",agent:"DevOps",memory:"Redis/Valkey connection timeout runbook: check CloudWatch CurrConnections, verify SG rules allow port 6379, test from app subnet with valkey-cli, check maxclients config, review SLOWLOG.",scope:"/runbooks/connectivity"},
+    {type:"store",agent:"DevOps",memory:"Common root cause: security group missing inbound rule for port 6379 from application subnet CIDR. Fix: add inbound TCP 6379 from app SG.",scope:"/runbooks/security-groups"},
+    {type:"task",agent:"DevOps",text:"INCIDENT: Production app can't connect to the cache cluster. What should we check first?"},
+    {type:"recall",agent:"DevOps",query:"connection timeout cache cluster troubleshoot",expectScore:0.92,expectMemory:"Redis/Valkey connection timeout runbook"},
+    {type:"work",agent:"DevOps",text:"🧠 Recalled runbook! Checking CloudWatch first, then security groups. Past incidents show SG misconfiguration is the most common cause."},
+  ]}
+];
+
+window.onload=()=>{
+  agentEl=document.getElementById('agentLog');
+  cmdEl=document.getElementById('cmdLog');
+  setTimeout(runAutoDemo,800);
+};
+
+function updateStats(){
+  document.getElementById('memCount').textContent=memCount;
+  document.getElementById('searchCount').textContent=searchCount;
+  document.getElementById('avgScore').textContent=searchCount?(totalScore/searchCount).toFixed(2):'0.00';
+  document.getElementById('avgLatency').textContent=(memCount+searchCount)?Math.round(totalLatency/(memCount+searchCount)):'0';
+  document.getElementById('cmdCount').textContent=cmdTotal+' commands';
+  document.getElementById('agentCount').textContent=eventTotal+' events';
+}
+
+function setStep(n){
+  for(let i=1;i<=4;i++){
+    const d=document.getElementById('dot'+i);
+    d.className='dot'+(i<n?' done':'')+(i===n?' active':'');
+  }
+}
+
+function addEvent(html,cls=''){
+  if(agentEl.querySelector('.empty'))agentEl.innerHTML='';
+  const d=document.createElement('div');
+  d.className='event '+cls;
+  d.innerHTML=html;
+  agentEl.appendChild(d);
+  agentEl.scrollTop=agentEl.scrollHeight;
+  eventTotal++;
+  updateStats();
+}
+
+function addCmd(text,cls=''){
+  if(cmdEl.querySelector('.empty'))cmdEl.innerHTML='';
+  const d=document.createElement('div');
+  d.className='cmd '+cls;
+  const ts=new Date().toLocaleTimeString();
+  d.innerHTML='<span class="ts">'+ts+'</span>'+text;
+  cmdEl.appendChild(d);
+  cmdEl.scrollTop=cmdEl.scrollHeight;
+  cmdTotal++;
+  updateStats();
+}
+
+function sleep(ms){return new Promise(r=>setTimeout(r,ms));}
+
+async function runScenario(scenario){
+  document.getElementById('scenarioLabel').textContent=scenario.name;
+  const agentRoles={};
+  scenario.agents.forEach(a=>{agentRoles[a.name]=a.role;});
+
+  for(const phase of scenario.phases){
+    if(!running)return;
+    const role=agentRoles[phase.agent]||'reviewer';
+    const roleClass=role;
+
+    if(phase.type==='task'){
+      setStep(1);
+      addEvent('<div class="agent-name">📋 Task → <span class="role '+roleClass+'">'+phase.agent+'</span></div><div class="content">'+phase.text.replace(/\n/g,'<br>')+'</div>','task');
+      await sleep(1200);
+
+    }else if(phase.type==='work'){
+      setStep(2);
+      addEvent('<div class="agent-name">💭 <span class="role '+roleClass+'">'+phase.agent+'</span> thinking...</div><div class="content">'+phase.text+'</div>');
+      await sleep(1500);
+
+    }else if(phase.type==='store'){
+      setStep(3);
+      const lat=Math.round(8+Math.random()*15);
+      totalLatency+=lat;
+      memCount++;
+      addEvent('<div class="agent-name">💾 <span class="role '+roleClass+'">'+phase.agent+'</span> → Store Memory</div><div class="content">'+phase.memory.substring(0,120)+'...</div><div class="meta-row"><span>Scope: '+phase.scope+'</span><span class="latency">'+lat+'ms</span></div>','store');
+      addCmd('JSON.SET memory:'+Math.random().toString(36).substr(2,8)+' $ \'{"content":"'+phase.memory.substring(0,50)+'...","scope":"'+phase.scope+'","embedding":[...]}\'','json');
+      addCmd('EXPIRE memory:... 3600','expire');
+      await sleep(800);
+
+    }else if(phase.type==='recall'){
+      setStep(4);
+      const score=phase.expectScore+(Math.random()*0.04-0.02);
+      const lat=Math.round(1+Math.random()*3);
+      totalLatency+=lat;
+      totalScore+=score;
+      searchCount++;
+      addCmd('FT.SEARCH memory_idx "(*)==>[KNN 3 @embedding $vec AS score]" PARAMS 2 vec <binary>','search');
+      await sleep(400);
+      addCmd('→ Result: score='+score.toFixed(3)+' key=memory:... <span class="latency">'+lat+'ms</span>','search');
+      addEvent('<div class="agent-name">🧠 <span class="role '+roleClass+'">'+phase.agent+'</span> → Recall Memory</div><div class="content">Query: "'+phase.query+'"<br>Found: "'+phase.expectMemory+'..."</div><div class="meta-row"><span class="score">Score: '+score.toFixed(3)+'</span><span class="latency">'+lat+'ms</span></div><div class="score-bar"><div class="score-fill" style="width:'+Math.round(score*100)+'%"></div></div>','recall');
+      await sleep(1000);
+    }
+    updateStats();
+  }
+}
+
+async function runAutoDemo(){
+  if(running)return;
+  running=true;
+  let idx=0;
+  while(running){
+    const scenario=SCENARIOS[idx%SCENARIOS.length];
+    await runScenario(scenario);
+    await sleep(3000);
+    idx++;
+    if(running){
+      agentEl.innerHTML='<div class="empty">Loading next scenario...</div>';
+      cmdEl.innerHTML='<div class="empty">Commands will appear here...</div>';
+      cmdTotal=0;eventTotal=0;
+      await sleep(1000);
+    }
+  }
+}
+
+function clearAll(){
+  running=false;
+  memCount=0;searchCount=0;totalScore=0;totalLatency=0;cmdTotal=0;eventTotal=0;
+  agentEl.innerHTML='<div class="empty">Click Auto Demo to start</div>';
+  cmdEl.innerHTML='<div class="empty">Commands will appear here...</div>';
+  setStep(0);
+  updateStats();
+}
+</script>
+</body>
+</html>

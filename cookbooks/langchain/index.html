@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>LangChain / LangGraph Cookbooks — Valkey for AI</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../cookbook.css">
+<style>
+.cookbook-grid{display:grid;gap:16px;margin:32px 0}
+.cookbook-card{display:block;background:var(--card);border:1px solid var(--brd);border-radius:var(--radius);padding:24px;transition:.2s}
+.cookbook-card:hover{background:var(--card-h);text-decoration:none;transform:translateY(-2px)}
+.cookbook-card .num{font-size:13px;color:var(--g2);font-weight:700;margin-bottom:8px}
+.cookbook-card h3{margin:0 0 8px;font-size:17px}
+.cookbook-card p{font-size:14px;color:var(--t3);margin:0 0 12px}
+.cookbook-card .tags{display:flex;gap:8px;flex-wrap:wrap}
+.hero{text-align:center;padding:60px 24px 40px;max-width:800px;margin:0 auto}
+.hero h1{font-size:44px;margin-bottom:16px}
+.hero .lead{margin:0 auto 32px;max-width:600px}
+.arch{background:var(--card);border:1px solid var(--brd);border-radius:12px;padding:20px;font-family:'SF Mono','Fira Code',monospace;font-size:13px;line-height:1.6;color:var(--t2);white-space:pre;overflow-x:auto;margin:0 auto 40px;max-width:700px}
+.cta{display:flex;gap:16px;justify-content:center;margin-top:32px;flex-wrap:wrap}
+.cta a{padding:10px 24px;border-radius:100px;font-size:14px;font-weight:600;transition:.2s}
+.cta a.primary{background:linear-gradient(135deg,var(--g1),var(--g2));color:#fff}
+.cta a.secondary{border:1px solid var(--brd);color:var(--t2)}
+.cta a:hover{transform:translateY(-1px);text-decoration:none}
+</style>
+</head>
+<body>
+<nav class="nav"><div class="nav-inner">
+<a href="/" class="nav-logo"><img src="/valkey-logo.svg" alt="Valkey"><span class="accent">for ai</span></a>
+<div class="nav-links"><a href="/#use-cases">Use Cases</a><a href="/#frameworks">Frameworks</a><a href="https://github.com/langchain-ai/langchain-aws" target="_blank">GitHub</a></div>
+</div></nav>
+
+<div class="hero">
+<h1>LangChain / LangGraph</h1>
+<p class="lead">Use Valkey as the complete persistence layer for LangGraph agents — checkpointing, semantic caching, and vector search — through the official <code>langgraph-checkpoint-aws</code> package.</p>
+<div class="arch">┌──────────────┐    ┌───────────────┐    ┌──────────────┐
+│  LangGraph   │    │  langgraph-   │    │   Amazon     │
+│    Agent     │───▶│  checkpoint-  │    │   Bedrock    │
+│              │◀───│  aws[valkey]  │    │              │
+└──────────────┘    └───────┬───────┘    └──────┬───────┘
+                            │                    │
+                    ┌───────▼────────────────────▼──┐
+                    │   ElastiCache for Valkey       │
+                    │                                │
+                    │  ValkeySaver  → Checkpoints    │
+                    │  ValkeyStore  → Vector search  │
+                    │  ValkeyCache  → LLM caching    │
+                    │  JSON + TTL   → Session state  │
+                    │  FT.SEARCH    → Semantic match  │
+                    └────────────────────────────────┘</div>
+</div>
+
+<article>
+<div class="cookbook-grid">
+
+<a href="01-getting-started.html" class="cookbook-card">
+<div class="num">01</div>
+<h3>Getting Started</h3>
+<p>Install <code>langgraph-checkpoint-aws[valkey]</code>, connect to Valkey, and persist your first LangGraph agent with <code>ValkeySaver</code>.</p>
+<div class="tags">
+<span class="diff-easy">Beginner</span>
+<span class="lang">Python</span>
+<span style="background:rgba(255,255,255,.06);color:var(--t3)">~10 min</span>
+</div>
+</a>
+
+<a href="02-llm-caching.html" class="cookbook-card">
+<div class="num">02</div>
+<h3>LLM Response Caching</h3>
+<p>Cache expensive Bedrock LLM calls with <code>ValkeyCache</code>. Benchmark cache miss (~4s) vs cache hit (~1ms) and slash your inference costs.</p>
+<div class="tags">
+<span class="diff-mid">Intermediate</span>
+<span class="lang">Python</span>
+<span style="background:rgba(255,255,255,.06);color:var(--t3)">~15 min</span>
+</div>
+</a>
+
+<a href="03-semantic-search.html" class="cookbook-card">
+<div class="num">03</div>
+<h3>Semantic Search with ValkeyStore</h3>
+<p>Store documents with vector embeddings and search by meaning using HNSW indexes, <code>BedrockEmbeddings</code>, and <code>ValkeyStore</code>.</p>
+<div class="tags">
+<span class="diff-mid">Intermediate</span>
+<span class="lang">Python</span>
+<span style="background:rgba(255,255,255,.06);color:var(--t3)">~20 min</span>
+</div>
+</a>
+
+<a href="04-full-agent.html" class="cookbook-card">
+<div class="num">04</div>
+<h3>Full Agent — All Three Components</h3>
+<p>Wire <code>ValkeySaver</code> + <code>ValkeyStore</code> + <code>ValkeyCache</code> together in an IT help desk agent with semantic caching and checkpointing.</p>
+<div class="tags">
+<span class="diff-hard">Advanced</span>
+<span class="lang">Python</span>
+<span style="background:rgba(255,255,255,.06);color:var(--t3)">~25 min</span>
+</div>
+</a>
+
+</div>
+
+<div class="cta">
+<a href="01-getting-started.html" class="primary">Start Cookbook 01 →</a>
+<a href="/demo/langchain.html" class="secondary">🎮 Try Live Demo</a>
+</div>
+</article>
+</body>
+</html>

@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>02 LLM Response Caching — LangChain — Valkey for AI</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../cookbook.css">
+</head>
+<body>
+<nav class="nav"><div class="nav-inner">
+<a href="/" class="nav-logo"><img src="/valkey-logo.svg" alt="Valkey"><span class="accent">for ai</span></a>
+<div class="nav-links"><a href="/#use-cases">Use Cases</a><a href="/cookbooks/langchain/">Cookbooks</a><a href="/#frameworks">Frameworks</a><a href="https://github.com/langchain-ai/langchain-aws" target="_blank">GitHub</a></div>
+</div></nav>
+
+<article>
+<div class="breadcrumb"><a href="/">Home</a> → <a href="/cookbooks/langchain/">LangChain</a> → 02 LLM Response Caching</div>
+<div class="meta">
+<span class="diff-mid">Intermediate</span>
+<span class="lang">Python</span>
+<span class="lang">~15 min</span>
+</div>
+
+<h1>LLM Response Caching with <span class="gradient">ValkeyCache</span></h1>
+<p class="lead">Cache expensive Bedrock LLM calls with <code>ValkeyCache</code>. Identical prompts return in ~1ms instead of ~4 seconds — saving time and money.</p>
+
+<h2>The Problem</h2>
+<p>LLM API calls are expensive ($0.003–$0.10+ per call) and slow (2–10 seconds). Users often send identical or near-identical prompts:</p>
+<ul>
+<li>Multiple users asking the same FAQ</li>
+<li>Retry logic re-sending the same prompt</li>
+<li>Agents re-invoking the same tool with the same input</li>
+</ul>
+<p>Exact-match caching eliminates redundant calls. (For meaning-based matching, see <a href="03-semantic-search.html">Guide 03</a>.)</p>
+
+<div class="callout" style="border-left-color:#f59e0b">
+<p><strong>Upstream Contribution:</strong> The <code>ValkeyCache</code> integration was contributed to <code>langchain-ai/langchain-aws</code> in <a href="https://github.com/langchain-ai/langchain-aws/pull/717" target="_blank" style="color:var(--g1)">PR #717</a> by the Valkey team.</p>
+</div>
+
+<h2>Step 1: Initialize ValkeyCache</h2>
+<pre><code><span class="keyword">from</span> langgraph_checkpoint_aws <span class="keyword">import</span> ValkeyCache
+<span class="keyword">from</span> valkey <span class="keyword">import</span> Valkey
+
+<span class="comment"># Create Valkey client</span>
+valkey_client = Valkey.from_url(
+    <span class="string">"valkey://localhost:6379"</span>,
+    decode_responses=<span class="keyword">False</span>,
+)
+
+<span class="comment"># Initialize cache with 1-hour TTL</span>
+cache = ValkeyCache(
+    client=valkey_client,
+    prefix=<span class="string">"llm_cache:"</span>,
+    ttl=<span class="num">3600</span>,
+)</code></pre>
+
+<h2>Step 2: Cache Key Generation</h2>
+<p>Generate deterministic keys from prompt + model + temperature so different model configs don't collide:</p>
+<pre><code><span class="keyword">import</span> hashlib
+
+<span class="keyword">def</span> <span class="func">cache_key</span>(prompt: str, model: str = <span class="string">"claude-sonnet"</span>, temp: float = <span class="num">0.7</span>) -> tuple:
+    content = <span class="string">f"</span>{model}|temp={temp}|{prompt.strip()}<span class="string">"</span>
+    key = hashlib.sha256(content.encode()).hexdigest()[:<span class="num">16</span>]
+    <span class="keyword">return</span> ((<span class="string">"llm_responses"</span>,), key)</code></pre>
+
+<h2>Step 3: Cached Inference Function</h2>
+<pre><code><span class="keyword">import</span> time
+<span class="keyword">from</span> langchain_aws <span class="keyword">import</span> ChatBedrockConverse
+<span class="keyword">from</span> langchain_core.messages <span class="keyword">import</span> HumanMessage
+
+model = ChatBedrockConverse(
+    model=<span class="string">"us.anthropic.claude-sonnet-4-20250514-v1:0"</span>,
+    region_name=<span class="string">"us-west-2"</span>,
+)
+
+<span class="keyword">async def</span> <span class="func">cached_llm_call</span>(prompt: str) -> dict:
+    key = cache_key(prompt)
+
+    <span class="comment"># 1. Check cache</span>
+    start = time.time()
+    cached = <span class="keyword">await</span> cache.aget([key])
+    cache_time = time.time() - start
+
+    <span class="keyword">if</span> key <span class="keyword">in</span> cached:
+        <span class="keyword">return</span> {
+            <span class="string">"response"</span>: cached[key][<span class="string">"response"</span>],
+            <span class="string">"cached"</span>: <span class="keyword">True</span>,
+            <span class="string">"latency_ms"</span>: cache_time * <span class="num">1000</span>,
+        }
+
+    <span class="comment"># 2. Cache miss — call LLM</span>
+    start = time.time()
+    response = <span class="keyword">await</span> model.ainvoke([HumanMessage(content=prompt)])
+    llm_time = time.time() - start
+
+    <span class="comment"># 3. Store in cache</span>
+    <span class="keyword">await</span> cache.aset({key: ({<span class="string">"response"</span>: response.content}, <span class="num">3600</span>)})
+
+    <span class="keyword">return</span> {
+        <span class="string">"response"</span>: response.content,
+        <span class="string">"cached"</span>: <span class="keyword">False</span>,
+        <span class="string">"latency_ms"</span>: llm_time * <span class="num">1000</span>,
+    }</code></pre>
+
+<h2>Step 4: Benchmark — The Dramatic Difference</h2>
+<pre><code><span class="keyword">import</span> asyncio
+
+<span class="keyword">async def</span> <span class="func">benchmark</span>():
+    prompt = <span class="string">"What is Amazon ElastiCache for Valkey?"</span>
+
+    <span class="comment"># First call — cache miss</span>
+    r1 = <span class="keyword">await</span> cached_llm_call(prompt)
+    print(<span class="string">f"❌ Cache MISS: {r1['latency_ms']:.0f}ms"</span>)
+
+    <span class="comment"># Second call — cache hit</span>
+    r2 = <span class="keyword">await</span> cached_llm_call(prompt)
+    print(<span class="string">f"✅ Cache HIT:  {r2['latency_ms']:.1f}ms"</span>)
+
+    speedup = r1[<span class="string">"latency_ms"</span>] / r2[<span class="string">"latency_ms"</span>]
+    print(<span class="string">f"🚀 Speedup:   {speedup:.0f}x faster"</span>)
+
+asyncio.run(benchmark())
+
+<span class="comment"># Output:</span>
+<span class="comment"># ❌ Cache MISS: 4200ms</span>
+<span class="comment"># ✅ Cache HIT:  1.2ms</span>
+<span class="comment"># 🚀 Speedup:   3500x faster</span></code></pre>
+
+<h2>Step 5: TTL Management</h2>
+<pre><code><span class="comment"># Default TTL (set at cache creation)</span>
+cache = ValkeyCache(client=valkey_client, ttl=<span class="num">3600</span>)  <span class="comment"># 1 hour</span>
+
+<span class="comment"># Custom TTL per entry</span>
+<span class="keyword">await</span> cache.aset({key: (data, <span class="num">300</span>)})  <span class="comment"># 5 minutes for volatile data</span>
+
+<span class="comment"># Clear all cached entries</span>
+<span class="keyword">await</span> cache.aclear()</code></pre>
+
+<div class="callout">
+<p><strong>Valkey Commands Fired:</strong></p>
+<pre><code><span class="comment"># Cache lookup</span>
+GET llm_cache:a1b2c3d4e5f6g7h8
+
+<span class="comment"># Cache store</span>
+SET llm_cache:a1b2c3d4e5f6g7h8 '{"response":"..."}' EX 3600
+
+<span class="comment"># Cache clear</span>
+SCAN 0 MATCH llm_cache:* COUNT 100
+DEL llm_cache:a1b2c3d4e5f6g7h8 ...</code></pre>
+</div>
+
+<h2>Next Steps</h2>
+<p>Exact-match caching is powerful but misses paraphrased queries. Next, we'll add semantic search to match by meaning.</p>
+<div style="margin-top:24px"><a href="03-semantic-search.html" style="color:var(--g1);font-weight:600">Next: 03 Semantic Search with ValkeyStore →</a></div>
+</article>
+</body>
+</html>

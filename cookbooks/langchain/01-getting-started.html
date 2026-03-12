@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>01 Getting Started — LangChain — Valkey for AI</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../cookbook.css">
+</head>
+<body>
+<nav class="nav"><div class="nav-inner">
+<a href="/" class="nav-logo"><img src="/valkey-logo.svg" alt="Valkey"><span class="accent">for ai</span></a>
+<div class="nav-links"><a href="/#use-cases">Use Cases</a><a href="/cookbooks/langchain/">Cookbooks</a><a href="/#frameworks">Frameworks</a><a href="https://github.com/langchain-ai/langchain-aws" target="_blank">GitHub</a></div>
+</div></nav>
+
+<article>
+<div class="breadcrumb"><a href="/">Home</a> → <a href="/cookbooks/langchain/">LangChain</a> → 01 Getting Started</div>
+<div class="meta">
+<span class="diff-easy">Beginner</span>
+<span class="lang">Python</span>
+<span class="lang">~10 min</span>
+</div>
+
+<h1>Getting Started</h1>
+<p class="lead">Install <code>langgraph-checkpoint-aws</code>, connect to Valkey, and persist your first LangGraph agent. By the end, your agent's state survives restarts.</p>
+
+<h2>Why Valkey for LangGraph?</h2>
+<p>LangGraph agents are stateless by default — every invocation starts fresh. <code>ValkeySaver</code> adds persistent checkpointing backed by Valkey:</p>
+<ul>
+<li><strong>Sub-millisecond reads</strong> — checkpoint retrieval in ~0.1ms</li>
+<li><strong>Atomic writes</strong> — no partial state corruption</li>
+<li><strong>Built-in TTL</strong> — sessions auto-expire, no cleanup jobs</li>
+<li><strong>ElastiCache ready</strong> — same code works locally and in production</li>
+</ul>
+
+<h2>Prerequisites</h2>
+<ul>
+<li>Docker installed</li>
+<li>Python 3.10+</li>
+</ul>
+
+<h2>Step 1: Start Valkey</h2>
+<pre><code>docker run -d --name valkey -p 6379:6379 valkey/valkey-bundle:latest</code></pre>
+<p>The <code>valkey-bundle</code> image includes JSON and Search modules needed for ValkeyStore. Verify:</p>
+<pre><code>docker exec valkey valkey-cli PING
+<span class="comment"># PONG</span></code></pre>
+
+<h2>Step 2: Install the Package</h2>
+<pre><code>pip install 'langgraph-checkpoint-aws[valkey]' langchain-aws</code></pre>
+<p>This installs <code>ValkeySaver</code>, <code>ValkeyStore</code>, <code>ValkeyCache</code>, and the Bedrock integrations.</p>
+
+<h2>Step 3: Understand the Data Model</h2>
+<p><code>ValkeySaver</code> stores each checkpoint as a JSON document in Valkey:</p>
+<pre><code><span class="comment"># Key format: checkpoint:{thread_id}:{checkpoint_ns}:{checkpoint_id}</span>
+<span class="comment"># Each checkpoint contains:</span>
+{
+    "v": 1,
+    "ts": "2026-03-12T10:00:00+00:00",
+    "channel_values": {"messages": [...]},
+    "channel_versions": {"__start__": 2, "messages": 3},
+    "versions_seen": {...}
+}</code></pre>
+
+<div class="callout">
+<p><strong>Under the Hood:</strong> <code>ValkeySaver</code> uses Valkey JSON (<code>JSON.SET</code>) for structured storage and RediSearch (<code>FT.CREATE</code>, <code>FT.SEARCH</code>) for indexing checkpoints by thread ID and namespace. TTL is applied via <code>EXPIRE</code>.</p>
+</div>
+
+<h2>Step 4: Persist a LangGraph Agent</h2>
+<pre><code><span class="keyword">from</span> langgraph.graph <span class="keyword">import</span> StateGraph, MessagesState
+<span class="keyword">from</span> langgraph_checkpoint_aws <span class="keyword">import</span> ValkeySaver
+<span class="keyword">from</span> langchain_aws <span class="keyword">import</span> ChatBedrockConverse
+<span class="keyword">from</span> langchain_core.messages <span class="keyword">import</span> HumanMessage
+
+
+<span class="comment"># 1. Create a simple chatbot graph</span>
+model = ChatBedrockConverse(
+    model=<span class="string">"us.anthropic.claude-sonnet-4-20250514-v1:0"</span>,
+    region_name=<span class="string">"us-west-2"</span>,
+)
+
+<span class="keyword">def</span> <span class="func">chatbot</span>(state: MessagesState):
+    <span class="keyword">return</span> {<span class="string">"messages"</span>: [model.invoke(state[<span class="string">"messages"</span>])]}
+
+builder = StateGraph(MessagesState)
+builder.add_node(<span class="string">"chatbot"</span>, chatbot)
+builder.set_entry_point(<span class="string">"chatbot"</span>)
+builder.set_finish_point(<span class="string">"chatbot"</span>)
+
+<span class="comment"># 2. Compile with ValkeySaver — this is the key line</span>
+<span class="keyword">with</span> ValkeySaver.from_conn_string(
+    <span class="string">"valkey://localhost:6379"</span>,
+    ttl_seconds=<span class="num">3600</span>,
+) <span class="keyword">as</span> checkpointer:
+    graph = builder.compile(checkpointer=checkpointer)
+
+    <span class="comment"># 3. Invoke with a thread ID</span>
+    config = {<span class="string">"configurable"</span>: {<span class="string">"thread_id"</span>: <span class="string">"session-1"</span>}}
+    result = graph.invoke(
+        {<span class="string">"messages"</span>: [HumanMessage(content=<span class="string">"What is Valkey?"</span>)]},
+        config,
+    )
+    print(result[<span class="string">"messages"</span>][-<span class="num">1</span>].content)
+
+    <span class="comment"># 4. Continue the conversation — state is persisted!</span>
+    result = graph.invoke(
+        {<span class="string">"messages"</span>: [HumanMessage(content=<span class="string">"How fast is it?"</span>)]},
+        config,
+    )
+    <span class="comment"># The agent remembers the previous message about Valkey</span>
+    print(result[<span class="string">"messages"</span>][-<span class="num">1</span>].content)</code></pre>
+
+<h2>Step 5: Verify Persistence</h2>
+<p>Stop and restart your script — the conversation state is still in Valkey:</p>
+<pre><code><span class="comment"># In a NEW Python process:</span>
+<span class="keyword">with</span> ValkeySaver.from_conn_string(<span class="string">"valkey://localhost:6379"</span>) <span class="keyword">as</span> checkpointer:
+    graph = builder.compile(checkpointer=checkpointer)
+    config = {<span class="string">"configurable"</span>: {<span class="string">"thread_id"</span>: <span class="string">"session-1"</span>}}
+
+    <span class="comment"># List checkpoints for this thread</span>
+    <span class="keyword">for</span> cp <span class="keyword">in</span> checkpointer.list(config):
+        print(cp.metadata)  <span class="comment"># Shows previous conversation</span></code></pre>
+
+<div class="callout">
+<p><strong>Valkey Commands Fired:</strong></p>
+<pre><code>JSON.SET checkpoint:session-1:__empty__:abc123 $ '{...}'
+EXPIRE checkpoint:session-1:__empty__:abc123 3600
+FT.SEARCH checkpoints_idx '@thread_id:{session-1}' SORTBY ts DESC LIMIT 0 1</code></pre>
+</div>
+
+<h2>Next Steps</h2>
+<p>You now have a LangGraph agent with persistent state. Next, let's add LLM response caching to cut costs and latency.</p>
+<div style="margin-top:24px"><a href="02-llm-caching.html" style="color:var(--g1);font-weight:600">Next: 02 LLM Response Caching →</a></div>
+</article>
+</body>
+</html>

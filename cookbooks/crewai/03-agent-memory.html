@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>03 Agent Memory in Action — CrewAI — Valkey for AI</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../cookbook.css">
+</head>
+<body>
+<nav class="nav"><div class="nav-inner">
+<a href="/" class="nav-logo"><img src="/valkey-logo.svg" alt="Valkey"><span class="accent">for ai</span></a>
+<div class="nav-links"><a href="/#use-cases">Use Cases</a><a href="/cookbooks/crewai/">Cookbooks</a><a href="/#frameworks">Frameworks</a><a href="https://github.com/valkey-io" target="_blank">GitHub</a></div>
+</div></nav>
+
+<article>
+<div class="breadcrumb"><a href="/">Home</a> → <a href="/cookbooks/crewai/">CrewAI</a> → 03 Agent Memory</div>
+<div class="meta"><span class="diff-mid">Intermediate</span><span class="lang">Python</span><span class="lang">~20 min</span></div>
+
+<h1>Agent Memory <span class="gradient">in Action</span></h1>
+<p class="lead">Wire <code>ValkeyStorage</code> into CrewAI's <code>Memory</code> system with Amazon Bedrock. Run agents that store knowledge and recall it across executions.</p>
+
+<h2>Step 1: Configure Memory with Bedrock</h2>
+<pre><code><span class="keyword">import</span> boto3
+<span class="keyword">from</span> crewai.memory.unified_memory <span class="keyword">import</span> Memory
+<span class="keyword">from</span> valkey_storage <span class="keyword">import</span> ValkeyStorage
+
+<span class="keyword">def</span> <span class="func">build_memory</span>() -> Memory:
+    session = boto3.Session(region_name=<span class="string">"us-west-2"</span>)
+    <span class="keyword">return</span> Memory(
+        storage=ValkeyStorage(),
+        llm=<span class="string">"bedrock/anthropic.claude-3-haiku-20240307-v1:0"</span>,
+        embedder={
+            <span class="string">"provider"</span>: <span class="string">"amazon-bedrock"</span>,
+            <span class="string">"config"</span>: {
+                <span class="string">"model_name"</span>: <span class="string">"amazon.titan-embed-text-v1"</span>,
+                <span class="string">"session"</span>: session,
+            },
+        },
+    )</code></pre>
+
+<h2>Step 2: Create an Agent with Memory</h2>
+<pre><code><span class="keyword">from</span> crewai <span class="keyword">import</span> Agent, Crew, Task
+
+memory = build_memory()
+
+reviewer = Agent(
+    role=<span class="string">"Senior Code Reviewer"</span>,
+    goal=<span class="string">"Review code for quality, security, and best practices"</span>,
+    backstory=<span class="string">"You are an experienced engineer who has reviewed thousands of PRs."</span>,
+    memory=<span class="keyword">True</span>,
+    verbose=<span class="keyword">True</span>,
+)</code></pre>
+
+<h2>Step 3: Store Patterns — First Execution</h2>
+<pre><code><span class="comment"># First crew run — agent learns patterns</span>
+learn_task = Task(
+    description=<span class="string">"""Review this code and remember the patterns you find:
+    
+    def get_user(id):
+        user = db.query(f"SELECT * FROM users WHERE id = {id}")
+        return user
+    """</span>,
+    expected_output=<span class="string">"Code review with identified patterns"</span>,
+    agent=reviewer,
+)
+
+crew = Crew(
+    agents=[reviewer],
+    tasks=[learn_task],
+    memory=memory,
+    verbose=<span class="keyword">True</span>,
+)
+
+result = crew.kickoff()
+print(result)
+<span class="comment"># Agent identifies: SQL injection risk, no input validation, no error handling</span></code></pre>
+
+<div class="callout">
+<p><strong>Valkey Commands Fired (store):</strong></p>
+<pre><code>JSON.SET memory:7f3a-b2c1 $ '{"content":"SQL injection risk in get_user...","scope":"/code-review","embedding":[0.12,-0.45,...],...}'
+EXPIRE memory:7f3a-b2c1 3600</code></pre>
+</div>
+
+<h2>Step 4: Recall Patterns — Later Execution</h2>
+<pre><code><span class="comment"># Later crew run — agent recalls what it learned</span>
+recall_task = Task(
+    description=<span class="string">"""Review this new code. Use your memory of past reviews:
+    
+    def delete_account(user_id):
+        db.execute(f"DELETE FROM accounts WHERE user_id = {user_id}")
+        return {"status": "deleted"}
+    """</span>,
+    expected_output=<span class="string">"Code review informed by past patterns"</span>,
+    agent=reviewer,
+)
+
+crew2 = Crew(
+    agents=[reviewer],
+    tasks=[recall_task],
+    memory=memory,  <span class="comment"># Same memory — recalls from Valkey</span>
+    verbose=<span class="keyword">True</span>,
+)
+
+result2 = crew2.kickoff()
+print(result2)
+<span class="comment"># Agent recalls the SQL injection pattern from the first review!</span>
+<span class="comment"># "I've seen this pattern before — f-string SQL is vulnerable to injection..."</span></code></pre>
+
+<div class="callout">
+<p><strong>Valkey Commands Fired (recall):</strong></p>
+<pre><code>FT.SEARCH memory_idx
+  "(*)==>[KNN 5 @embedding $vec AS score]"
+  PARAMS 2 vec &lt;binary_vector&gt;
+
+<span class="comment"># Returns: score 0.94 — "SQL injection risk in get_user..."</span></code></pre>
+</div>
+
+<h2>Next Steps</h2>
+<p>Your agents now have persistent, searchable memory backed by Valkey. To deploy to production, see the <a href="https://docs.aws.amazon.com/AmazonElastiCache/latest/dg/WhatIs.html" target="_blank" style="color:var(--g1)">ElastiCache for Valkey Getting Started guide</a> — set <code>VALKEY_HOST</code> and <code>VALKEY_TLS=true</code> and your <code>ValkeyStorage</code> connects to ElastiCache automatically.</p>
+<div style="margin-top:24px"><a href="/cookbooks/crewai/" style="color:var(--g1);font-weight:600">← Back to CrewAI Cookbooks</a></div>
+</article>
+</body>
+</html>

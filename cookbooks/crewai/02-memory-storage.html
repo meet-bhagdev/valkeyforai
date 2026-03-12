@@ -1,0 +1,176 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>02 Memory Storage Backend — CrewAI — Valkey for AI</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../cookbook.css">
+</head>
+<body>
+<nav class="nav"><div class="nav-inner">
+<a href="/" class="nav-logo"><img src="/valkey-logo.svg" alt="Valkey"><span class="accent">for ai</span></a>
+<div class="nav-links"><a href="/#use-cases">Use Cases</a><a href="/cookbooks/crewai/">Cookbooks</a><a href="/#frameworks">Frameworks</a><a href="https://github.com/valkey-io" target="_blank">GitHub</a></div>
+</div></nav>
+
+<article>
+<div class="breadcrumb"><a href="/">Home</a> → <a href="/cookbooks/crewai/">CrewAI</a> → 02 Memory Storage Backend</div>
+<div class="meta"><span class="diff-mid">Intermediate</span><span class="lang">Python</span><span class="lang">~20 min</span></div>
+
+<h1>Memory Storage <span class="gradient">Backend</span></h1>
+<p class="lead">Build <code>ValkeyStorage</code> — a custom CrewAI storage backend that stores memories as JSON, indexes them with HNSW vectors, and recalls by semantic similarity.</p>
+
+<h2>The MemoryRecord Model</h2>
+<p>Each memory is a structured record with content, scope, categories, importance, and an embedding vector:</p>
+<pre><code><span class="keyword">from</span> pydantic <span class="keyword">import</span> BaseModel, Field
+<span class="keyword">from</span> datetime <span class="keyword">import</span> datetime
+<span class="keyword">from</span> uuid <span class="keyword">import</span> uuid4
+
+<span class="keyword">class</span> <span class="func">MemoryRecord</span>(BaseModel):
+    id: str = Field(default_factory=<span class="keyword">lambda</span>: str(uuid4()))
+    content: str = Field(default=<span class="string">""</span>)
+    scope: str = Field(default=<span class="string">"/"</span>)
+    categories: list[str] = Field(default_factory=list)
+    metadata: dict = Field(default_factory=dict)
+    importance: float = Field(default=<span class="num">0.5</span>, ge=<span class="num">0.0</span>, le=<span class="num">1.0</span>)
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    last_accessed: datetime = Field(default_factory=datetime.utcnow)
+    embedding: list[float] | <span class="keyword">None</span> = Field(default=<span class="keyword">None</span>)
+    source: str | <span class="keyword">None</span> = Field(default=<span class="keyword">None</span>)
+    private: bool = Field(default=<span class="keyword">False</span>)</code></pre>
+
+<h2>Step 1: Serialization</h2>
+<p>Convert <code>MemoryRecord</code> to/from Valkey JSON documents:</p>
+<pre><code><span class="keyword">import</span> json
+
+<span class="keyword">def</span> <span class="func">serialize_record</span>(record: MemoryRecord) -> dict:
+    <span class="keyword">return</span> {
+        <span class="string">"id"</span>: record.id,
+        <span class="string">"content"</span>: record.content,
+        <span class="string">"scope"</span>: record.scope,
+        <span class="string">"categories_str"</span>: <span class="string">","</span>.join(record.categories),
+        <span class="string">"metadata_str"</span>: json.dumps(record.metadata),
+        <span class="string">"importance"</span>: record.importance,
+        <span class="string">"created_at"</span>: record.created_at.timestamp(),
+        <span class="string">"last_accessed"</span>: record.last_accessed.timestamp(),
+        <span class="string">"embedding"</span>: record.embedding,
+        <span class="string">"source"</span>: record.source <span class="keyword">or</span> <span class="string">""</span>,
+        <span class="string">"private"</span>: <span class="string">"true"</span> <span class="keyword">if</span> record.private <span class="keyword">else</span> <span class="string">"false"</span>,
+    }</code></pre>
+
+<h2>Step 2: Create the HNSW Index</h2>
+<pre><code><span class="keyword">from</span> glide <span class="keyword">import</span> (
+    ft, VectorField, VectorAlgorithm, VectorFieldAttributesHnsw,
+    VectorType, DistanceMetricType, NumericField, TextField,
+    FtCreateOptions, DataType,
+)
+
+INDEX_NAME = <span class="string">"memory_idx"</span>
+KEY_PREFIX = <span class="string">"memory:"</span>
+VECTOR_DIM = <span class="num">1536</span>  <span class="comment"># Amazon Titan embeddings</span>
+
+<span class="keyword">async def</span> <span class="func">ensure_index</span>(client):
+    <span class="comment"># Check if index already exists</span>
+    existing = <span class="keyword">await</span> ft.list(client)
+    <span class="keyword">if</span> INDEX_NAME.encode() <span class="keyword">in</span> existing:
+        <span class="keyword">return</span>
+
+    hnsw = VectorFieldAttributesHnsw(
+        dimensions=VECTOR_DIM,
+        distance_metric=DistanceMetricType.COSINE,
+        type=VectorType.FLOAT32,
+    )
+    <span class="keyword">await</span> ft.create(
+        client, INDEX_NAME,
+        schema=[
+            TextField(<span class="string">"$.scope"</span>, alias=<span class="string">"scope"</span>),
+            TextField(<span class="string">"$.categories_str"</span>, alias=<span class="string">"categories_str"</span>),
+            NumericField(<span class="string">"$.importance"</span>, alias=<span class="string">"importance"</span>),
+            NumericField(<span class="string">"$.created_at"</span>, alias=<span class="string">"created_at"</span>),
+            VectorField(<span class="string">"$.embedding"</span>, VectorAlgorithm.HNSW,
+                        alias=<span class="string">"embedding"</span>, attributes=hnsw),
+        ],
+        options=FtCreateOptions(data_type=DataType.JSON, prefixes=[KEY_PREFIX]),
+    )</code></pre>
+
+<div class="callout">
+<p><strong>Valkey Command:</strong></p>
+<pre><code>FT.CREATE memory_idx ON JSON PREFIX 1 "memory:"
+  SCHEMA $.scope AS scope TEXT
+         $.categories_str AS categories_str TEXT
+         $.importance AS importance NUMERIC
+         $.created_at AS created_at NUMERIC
+         $.embedding AS embedding VECTOR HNSW 6
+           TYPE FLOAT32 DIM 1536 DISTANCE_METRIC COSINE</code></pre>
+</div>
+
+<h2>Step 3: Store a Memory</h2>
+<pre><code><span class="keyword">from</span> glide <span class="keyword">import</span> glide_json
+
+<span class="keyword">async def</span> <span class="func">store</span>(client, record: MemoryRecord, ttl: int = <span class="num">3600</span>):
+    key = <span class="string">f"</span>{KEY_PREFIX}{record.id}<span class="string">"</span>
+    doc = serialize_record(record)
+    <span class="keyword">await</span> glide_json.set(client, key, <span class="string">"$"</span>, json.dumps(doc))
+    <span class="keyword">await</span> client.expire(key, ttl)</code></pre>
+
+<div class="callout">
+<p><strong>Valkey Commands:</strong></p>
+<pre><code>JSON.SET memory:abc-123-def $ '{"id":"abc-123-def","content":"Always check for null...","embedding":[0.12,-0.45,...],...}'
+EXPIRE memory:abc-123-def 3600</code></pre>
+</div>
+
+<h2>Step 4: Recall by Semantic Similarity</h2>
+<pre><code><span class="keyword">import</span> struct
+
+<span class="keyword">async def</span> <span class="func">recall</span>(client, query_embedding: list[float], limit: int = <span class="num">5</span>):
+    <span class="comment"># Pack embedding to bytes for FT.SEARCH</span>
+    vec_bytes = struct.pack(<span class="string">f"&lt;</span>{len(query_embedding)}<span class="string">f"</span>, *query_embedding)
+
+    result = <span class="keyword">await</span> ft.search(
+        client, INDEX_NAME,
+        <span class="string">f"(*)=&gt;[KNN {limit} @embedding $vec AS score]"</span>,
+        options=FtSearchOptions(params={<span class="string">"vec"</span>: vec_bytes}),
+    )
+
+    <span class="comment"># Parse results — score is cosine distance, convert to similarity</span>
+    memories = []
+    <span class="keyword">if</span> result <span class="keyword">and</span> len(result) >= <span class="num">2</span> <span class="keyword">and</span> result[<span class="num">1</span>]:
+        <span class="keyword">for</span> key, fields <span class="keyword">in</span> result[<span class="num">1</span>].items():
+            doc = json.loads(fields[<span class="string">b"$"</span>])
+            score = <span class="num">1.0</span> - float(fields[<span class="string">b"score"</span>])
+            memories.append((doc, score))
+
+    <span class="keyword">return</span> sorted(memories, key=<span class="keyword">lambda</span> x: x[<span class="num">1</span>], reverse=<span class="keyword">True</span>)</code></pre>
+
+<div class="callout">
+<p><strong>Valkey Command:</strong></p>
+<pre><code>FT.SEARCH memory_idx
+  "(*)==>[KNN 5 @embedding $vec AS score]"
+  PARAMS 2 vec &lt;binary_vector_6144_bytes&gt;
+  SORTBY score ASC LIMIT 0 5</code></pre>
+</div>
+
+<h2>Step 5: Filtered Search</h2>
+<pre><code><span class="keyword">async def</span> <span class="func">search</span>(client, query_embedding, scope: str = <span class="keyword">None</span>, categories: list = <span class="keyword">None</span>, limit: int = <span class="num">5</span>):
+    <span class="comment"># Build filter expression</span>
+    filters = []
+    <span class="keyword">if</span> scope:
+        escaped = scope.replace(<span class="string">"/"</span>, <span class="string">"\\/"</span>)
+        filters.append(<span class="string">f"@scope:{{{escaped}*}}"</span>)
+    <span class="keyword">if</span> categories:
+        joined = <span class="string">"|"</span>.join(categories)
+        filters.append(<span class="string">f"@categories_str:{{{joined}}}"</span>)
+
+    filter_str = <span class="string">" "</span>.join(filters) <span class="keyword">if</span> filters <span class="keyword">else</span> <span class="string">"*"</span>
+    query = <span class="string">f"({filter_str})=&gt;[KNN {limit} @embedding $vec AS score]"</span>
+
+    vec_bytes = struct.pack(<span class="string">f"&lt;</span>{len(query_embedding)}<span class="string">f"</span>, *query_embedding)
+    result = <span class="keyword">await</span> ft.search(client, INDEX_NAME, query, options=FtSearchOptions(params={<span class="string">"vec"</span>: vec_bytes}))
+    <span class="comment"># ... parse results same as recall()</span></code></pre>
+
+<h2>Next Steps</h2>
+<p>The storage backend is complete. Next, let's wire it into CrewAI's <code>Memory</code> system and run real agents.</p>
+<div style="margin-top:24px"><a href="03-agent-memory.html" style="color:var(--g1);font-weight:600">Next: 03 Agent Memory in Action →</a></div>
+</article>
+</body>
+</html>

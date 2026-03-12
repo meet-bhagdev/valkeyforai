@@ -1,0 +1,164 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>04 Full Agent — LangChain — Valkey for AI</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../cookbook.css">
+</head>
+<body>
+<nav class="nav"><div class="nav-inner">
+<a href="/" class="nav-logo"><img src="/valkey-logo.svg" alt="Valkey"><span class="accent">for ai</span></a>
+<div class="nav-links"><a href="/#use-cases">Use Cases</a><a href="/cookbooks/langchain/">Cookbooks</a><a href="/#frameworks">Frameworks</a><a href="https://github.com/langchain-ai/langchain-aws" target="_blank">GitHub</a></div>
+</div></nav>
+
+<article>
+<div class="breadcrumb"><a href="/">Home</a> → <a href="/cookbooks/langchain/">LangChain</a> → 04 Full Agent</div>
+<div class="meta">
+<span class="diff-hard">Advanced</span>
+<span class="lang">Python</span>
+<span class="lang">~25 min</span>
+</div>
+
+<h1>Full Agent — <span class="gradient">All Three Components</span></h1>
+<p class="lead">Wire <code>ValkeySaver</code>, <code>ValkeyStore</code>, and <code>ValkeyCache</code> together in an IT help desk agent with semantic caching and persistent checkpointing.</p>
+
+<h2>Architecture</h2>
+<pre><code><span class="comment">User: "I forgot my password, help!"</span>
+<span class="comment">        │</span>
+<span class="comment">        ▼</span>
+<span class="comment">   ┌─ ValkeyStore.search() ─── semantic cache lookup</span>
+<span class="comment">   │   score ≥ 0.90 → ✅ return cached answer (1ms)</span>
+<span class="comment">   │   score < 0.90 → ❌ continue to LLM</span>
+<span class="comment">   │</span>
+<span class="comment">   ├─ ChatBedrockConverse.invoke() ─── LLM call (3-5s)</span>
+<span class="comment">   │</span>
+<span class="comment">   ├─ ValkeyStore.put() ─── cache the response</span>
+<span class="comment">   │</span>
+<span class="comment">   └─ ValkeySaver ─── checkpoint conversation state</span></code></pre>
+
+<h2>Step 1: Shared Valkey Connection</h2>
+<pre><code><span class="keyword">from</span> valkey <span class="keyword">import</span> Valkey
+<span class="keyword">from</span> langgraph_checkpoint_aws <span class="keyword">import</span> ValkeySaver, ValkeyStore, ValkeyCache
+<span class="keyword">from</span> langchain_aws <span class="keyword">import</span> ChatBedrockConverse, BedrockEmbeddings
+
+<span class="comment"># Single Valkey connection shared across all components</span>
+valkey_client = Valkey.from_url(<span class="string">"valkey://localhost:6379"</span>, decode_responses=<span class="keyword">False</span>)
+
+<span class="comment"># Embeddings for semantic search</span>
+embeddings = BedrockEmbeddings(
+    model_id=<span class="string">"amazon.titan-embed-text-v2:0"</span>,
+    region_name=<span class="string">"us-west-2"</span>,
+)
+
+<span class="comment"># LLM</span>
+model = ChatBedrockConverse(
+    model=<span class="string">"us.anthropic.claude-sonnet-4-20250514-v1:0"</span>,
+    region_name=<span class="string">"us-west-2"</span>,
+)</code></pre>
+
+<h2>Step 2: Initialize All Three Components</h2>
+<pre><code><span class="comment"># 1. Checkpointer — persists conversation state</span>
+saver = ValkeySaver(client=valkey_client, ttl=<span class="num">3600</span>)
+
+<span class="comment"># 2. Semantic store — vector search for cache lookups</span>
+store = ValkeyStore(
+    client=valkey_client,
+    index={
+        <span class="string">"collection_name"</span>: <span class="string">"helpdesk_cache"</span>,
+        <span class="string">"dims"</span>: <span class="num">1536</span>,
+        <span class="string">"embed"</span>: embeddings,
+        <span class="string">"fields"</span>: [<span class="string">"query"</span>],
+        <span class="string">"index_type"</span>: <span class="string">"hnsw"</span>,
+    },
+    ttl={<span class="string">"default_ttl"</span>: <span class="num">60.0</span>},
+)
+store.setup()
+
+<span class="comment"># 3. Exact cache — fast key-value cache for repeated prompts</span>
+cache = ValkeyCache(client=valkey_client, prefix=<span class="string">"llm_cache:"</span>, ttl=<span class="num">3600</span>)</code></pre>
+
+<h2>Step 3: Build the Agent Graph</h2>
+<pre><code><span class="keyword">from</span> langgraph.graph <span class="keyword">import</span> StateGraph, MessagesState
+<span class="keyword">from</span> langchain_core.messages <span class="keyword">import</span> HumanMessage
+<span class="keyword">import</span> hashlib
+
+SIMILARITY_THRESHOLD = <span class="num">0.90</span>
+
+<span class="keyword">def</span> <span class="func">helpdesk_agent</span>(state: MessagesState):
+    user_msg = state[<span class="string">"messages"</span>][-<span class="num">1</span>].content
+
+    <span class="comment"># 1. Check semantic cache</span>
+    hits = store.search((<span class="string">"helpdesk"</span>,), query=user_msg, limit=<span class="num">1</span>)
+    <span class="keyword">if</span> hits <span class="keyword">and</span> hits[<span class="num">0</span>].score >= SIMILARITY_THRESHOLD:
+        cached_answer = hits[<span class="num">0</span>].value[<span class="string">"answer"</span>]
+        <span class="keyword">return</span> {<span class="string">"messages"</span>: [AIMessage(content=cached_answer)]}
+
+    <span class="comment"># 2. Cache miss — call LLM</span>
+    response = model.invoke(state[<span class="string">"messages"</span>])
+
+    <span class="comment"># 3. Store in semantic cache for future hits</span>
+    key = hashlib.md5(user_msg.encode()).hexdigest()[:<span class="num">12</span>]
+    store.put(
+        (<span class="string">"helpdesk"</span>,), key,
+        {<span class="string">"query"</span>: user_msg, <span class="string">"answer"</span>: response.content},
+    )
+
+    <span class="keyword">return</span> {<span class="string">"messages"</span>: [response]}
+
+<span class="comment"># Build and compile with ValkeySaver</span>
+builder = StateGraph(MessagesState)
+builder.add_node(<span class="string">"agent"</span>, helpdesk_agent)
+builder.set_entry_point(<span class="string">"agent"</span>)
+builder.set_finish_point(<span class="string">"agent"</span>)
+
+graph = builder.compile(checkpointer=saver)</code></pre>
+
+<h2>Step 4: Run the Complete Flow</h2>
+<pre><code><span class="keyword">import</span> time
+
+config = {<span class="string">"configurable"</span>: {<span class="string">"thread_id"</span>: <span class="string">"user-42"</span>}}
+
+<span class="comment"># First question — cache miss, calls LLM</span>
+t0 = time.time()
+r1 = graph.invoke(
+    {<span class="string">"messages"</span>: [HumanMessage(content=<span class="string">"How do I reset my password?"</span>)]},
+    config,
+)
+print(<span class="string">f"❌ MISS: {(time.time()-t0)*1000:.0f}ms"</span>)
+
+<span class="comment"># Paraphrased question — cache hit!</span>
+t0 = time.time()
+r2 = graph.invoke(
+    {<span class="string">"messages"</span>: [HumanMessage(content=<span class="string">"I forgot my password, help!"</span>)]},
+    config,
+)
+print(<span class="string">f"✅ HIT:  {(time.time()-t0)*1000:.1f}ms"</span>)
+
+<span class="comment"># Output:</span>
+<span class="comment"># ❌ MISS: 4200ms</span>
+<span class="comment"># ✅ HIT:  3.1ms</span></code></pre>
+
+<div class="callout">
+<p><strong>Complete Valkey Command Sequence (cache miss):</strong></p>
+<pre><code><span class="comment"># 1. Semantic cache lookup</span>
+FT.SEARCH helpdesk_cache_idx "(*)==>[KNN 1 @embedding $vec]" ...
+
+<span class="comment"># 2. (No match — call LLM via Bedrock)</span>
+
+<span class="comment"># 3. Store response in semantic cache</span>
+JSON.SET store:helpdesk_cache:helpdesk:a1b2c3d4e5f6 $ '{...}'
+EXPIRE store:helpdesk_cache:helpdesk:a1b2c3d4e5f6 3600
+
+<span class="comment"># 4. Checkpoint conversation state</span>
+JSON.SET checkpoint:user-42:__empty__:cp_001 $ '{...}'
+EXPIRE checkpoint:user-42:__empty__:cp_001 3600</code></pre>
+</div>
+
+<h2>Next Steps</h2>
+<p>You now have a complete LangGraph agent with Valkey-backed checkpointing, semantic caching, and vector search. To deploy to production, see the <a href="https://docs.aws.amazon.com/AmazonElastiCache/latest/dg/WhatIs.html" target="_blank" style="color:var(--g1)">ElastiCache for Valkey Getting Started guide</a> — just swap <code>valkey://localhost:6379</code> for <code>valkeys://your-cluster.amazonaws.com:6379</code>.</p>
+<div style="margin-top:24px"><a href="/cookbooks/langchain/" style="color:var(--g1);font-weight:600">← Back to LangChain Cookbooks</a></div>
+</article>
+</body>
+</html>

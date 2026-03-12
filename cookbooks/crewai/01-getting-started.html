@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>01 Getting Started — CrewAI — Valkey for AI</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../cookbook.css">
+</head>
+<body>
+<nav class="nav"><div class="nav-inner">
+<a href="/" class="nav-logo"><img src="/valkey-logo.svg" alt="Valkey"><span class="accent">for ai</span></a>
+<div class="nav-links"><a href="/#use-cases">Use Cases</a><a href="/cookbooks/crewai/">Cookbooks</a><a href="/#frameworks">Frameworks</a><a href="https://github.com/valkey-io" target="_blank">GitHub</a></div>
+</div></nav>
+
+<article>
+<div class="breadcrumb"><a href="/">Home</a> → <a href="/cookbooks/crewai/">CrewAI</a> → 01 Getting Started</div>
+<div class="meta"><span class="diff-easy">Beginner</span><span class="lang">Python</span><span class="lang">~10 min</span></div>
+
+<h1>Getting Started</h1>
+<p class="lead">Set up Valkey with Docker, install the GLIDE client, configure connection parameters, and verify everything works.</p>
+
+<h2>Why Valkey for CrewAI?</h2>
+<p>CrewAI agents need persistent memory to learn across executions. Valkey is ideal because:</p>
+<ul>
+<li><strong>Sub-millisecond reads</strong> — memory recall in ~0.1ms via GLIDE</li>
+<li><strong>Vector search</strong> — <code>FT.SEARCH</code> with HNSW for semantic recall</li>
+<li><strong>JSON storage</strong> — <code>JSON.SET</code> stores structured memory records natively</li>
+<li><strong>TTL</strong> — memories auto-expire with <code>EXPIRE</code></li>
+</ul>
+
+<h2>Prerequisites</h2>
+<ul><li>Docker installed</li><li>Python 3.10+</li><li>AWS credentials for Bedrock (for later guides)</li></ul>
+
+<h2>Step 1: Start Valkey</h2>
+<pre><code>docker run -d --name valkey -p 6379:6379 valkey/valkey-bundle:latest</code></pre>
+<p>The <code>valkey-bundle</code> image includes JSON and Search modules. Verify:</p>
+<pre><code>docker exec valkey valkey-cli PING
+<span class="comment"># PONG</span></code></pre>
+
+<h2>Step 2: Install Dependencies</h2>
+<pre><code>pip install crewai valkey-glide boto3</code></pre>
+
+<div class="callout">
+<p><strong>Why GLIDE?</strong> Valkey GLIDE is the official Valkey client with a Rust core for high performance. It supports both standalone Valkey and ElastiCache for Valkey clusters. Unlike <code>redis-py</code>, GLIDE is purpose-built for Valkey and supports all Valkey-specific features including <code>FT.*</code> search commands.</p>
+</div>
+
+<h2>Step 3: Connection Configuration</h2>
+<pre><code><span class="keyword">from</span> dataclasses <span class="keyword">import</span> dataclass
+<span class="keyword">import</span> os
+
+@dataclass(frozen=<span class="keyword">True</span>)
+<span class="keyword">class</span> <span class="func">ValkeyConfig</span>:
+    host: str
+    port: int
+    use_tls: bool
+    password: str | <span class="keyword">None</span>
+
+<span class="keyword">def</span> <span class="func">get_valkey_config</span>() -> ValkeyConfig:
+    <span class="keyword">return</span> ValkeyConfig(
+        host=os.environ.get(<span class="string">"VALKEY_HOST"</span>, <span class="string">"localhost"</span>),
+        port=int(os.environ.get(<span class="string">"VALKEY_PORT"</span>, <span class="string">"6379"</span>)),
+        use_tls=os.environ.get(<span class="string">"VALKEY_TLS"</span>, <span class="string">"false"</span>).lower() <span class="keyword">in</span> (<span class="string">"true"</span>, <span class="string">"1"</span>),
+        password=os.environ.get(<span class="string">"VALKEY_PASSWORD"</span>) <span class="keyword">or</span> <span class="keyword">None</span>,
+    )</code></pre>
+
+<h2>Step 4: Connect and Test</h2>
+<pre><code><span class="keyword">import</span> asyncio
+<span class="keyword">from</span> glide <span class="keyword">import</span> GlideClient, GlideClientConfiguration, NodeAddress
+
+<span class="keyword">async def</span> <span class="func">test_connection</span>():
+    config = get_valkey_config()
+    glide_config = GlideClientConfiguration(
+        [NodeAddress(config.host, config.port)],
+        use_tls=config.use_tls,
+    )
+    client = <span class="keyword">await</span> GlideClient.create(glide_config)
+
+    <span class="comment"># Test basic operations</span>
+    <span class="keyword">await</span> client.set(<span class="string">"test:hello"</span>, <span class="string">"world"</span>)
+    val = <span class="keyword">await</span> client.get(<span class="string">"test:hello"</span>)
+    print(<span class="string">f"✅ Connected! Got: {val.decode()}"</span>)
+
+    <span class="comment"># Clean up</span>
+    <span class="keyword">await</span> client.delete([<span class="string">"test:hello"</span>])
+
+asyncio.run(test_connection())
+<span class="comment"># ✅ Connected! Got: world</span></code></pre>
+
+<div class="callout">
+<p><strong>Valkey Commands Fired:</strong></p>
+<pre><code>SET test:hello "world"
+GET test:hello
+DEL test:hello</code></pre>
+</div>
+
+<h2>Next Steps</h2>
+<p>Connection works. Next, we'll build the <code>ValkeyStorage</code> backend that implements CrewAI's storage protocol.</p>
+<div style="margin-top:24px"><a href="02-memory-storage.html" style="color:var(--g1);font-weight:600">Next: 02 Memory Storage Backend →</a></div>
+</article>
+</body>
+</html>
