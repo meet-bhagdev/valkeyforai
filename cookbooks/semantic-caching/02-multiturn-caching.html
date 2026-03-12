@@ -1,0 +1,175 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>02 — Multi-Turn Conversation Caching — Valkey for AI</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../cookbook.css">
+</head>
+<body>
+<nav class="nav"><div class="nav-inner"><a href="/" class="nav-logo"><img src="/valkey-logo.svg" alt="Valkey"><span class="accent">for ai</span></a><div class="nav-links"><a href="/#use-cases">Use Cases</a><a href="https://github.com/meet-bhagdev/valkeyforai" target="_blank">GitHub</a></div></div></nav>
+<article>
+<div class="breadcrumb"><a href="/">Home</a> → <a href="/cookbooks/semantic-caching/">Semantic Caching</a> → 02 Multi-Turn Caching</div>
+<div class="meta"><span class="diff-medium">Intermediate</span><span class="lang">Python</span><span class="lang">~20 min</span></div>
+<h1>Multi-Turn <span class="gradient">Conversation Caching</span></h1>
+<p class="lead">Cache not just single prompts, but full conversation contexts. When a user asks a follow-up question in a similar conversation flow, return the cached response instead of calling the LLM again.</p>
+
+<h2>The Challenge</h2>
+<p>Single-prompt caching works well for stateless queries. But in multi-turn conversations, the same user message means different things depending on context:</p>
+<pre><code><span class="comment"># "Tell me more" means nothing without context</span>
+<span class="comment"># Conversation A: "What is Valkey?" → "Tell me more"  (about Valkey)</span>
+<span class="comment"># Conversation B: "What is Python?" → "Tell me more"  (about Python)</span>
+<span class="comment">#</span>
+<span class="comment"># Solution: embed the FULL context, not just the last message</span></code></pre>
+
+<h2>Strategy: Context-Aware Cache Keys</h2>
+<p>Instead of embedding only the last user message, we embed a summary of the full conversation context. This way, "Tell me more" in a Valkey conversation matches other Valkey follow-ups, not Python follow-ups.</p>
+
+<h2>Step 1: Create Index with TAG Filter for User/Session</h2>
+<pre><code><span class="keyword">import</span> redis
+<span class="keyword">import</span> numpy <span class="keyword">as</span> np
+<span class="keyword">import</span> hashlib
+<span class="keyword">import</span> time
+<span class="keyword">from</span> openai <span class="keyword">import</span> OpenAI
+
+client = redis.Redis(host=<span class="string">"localhost"</span>, port=<span class="num">6379</span>)
+openai_client = OpenAI()
+EMBEDDING_DIM = <span class="num">1536</span>
+
+<span class="comment"># Index with TAG field for per-user cache isolation</span>
+<span class="keyword">try</span>:
+    client.execute_command(
+        <span class="string">"FT.CREATE"</span>, <span class="string">"conv_cache_idx"</span>,
+        <span class="string">"SCHEMA"</span>,
+        <span class="string">"context_summary"</span>, <span class="string">"TEXT"</span>,
+        <span class="string">"response"</span>, <span class="string">"TEXT"</span>,
+        <span class="string">"user_id"</span>, <span class="string">"TAG"</span>,
+        <span class="string">"turn_count"</span>, <span class="string">"NUMERIC"</span>,
+        <span class="string">"embedding"</span>, <span class="string">"VECTOR"</span>, <span class="string">"HNSW"</span>, <span class="string">"6"</span>,
+        <span class="string">"TYPE"</span>, <span class="string">"FLOAT32"</span>,
+        <span class="string">"DIM"</span>, <span class="func">str</span>(EMBEDDING_DIM),
+        <span class="string">"DISTANCE_METRIC"</span>, <span class="string">"COSINE"</span>,
+    )
+<span class="keyword">except</span> redis.ResponseError:
+    <span class="keyword">pass</span></code></pre>
+
+<h2>Step 2: Build Context Summary</h2>
+<pre><code><span class="keyword">def</span> <span class="func">build_context_string</span>(messages: list) -> str:
+    <span class="string">"""Build a cacheable context string from conversation messages.
+    
+    Strategy: concatenate the last N messages into a summary string.
+    This captures the conversation flow, not just the last message.
+    """</span>
+    <span class="comment"># Use last 3 turns (6 messages: user+assistant pairs)</span>
+    recent = messages[-<span class="num">6</span>:]
+    parts = []
+    <span class="keyword">for</span> msg <span class="keyword">in</span> recent:
+        role = msg[<span class="string">"role"</span>]
+        content = msg[<span class="string">"content"</span>][:<span class="num">200</span>]  <span class="comment"># Truncate long messages</span>
+        parts.append(<span class="string">f"{role}: {content}"</span>)
+    <span class="keyword">return</span> <span class="string">" | "</span>.join(parts)
+
+<span class="keyword">def</span> <span class="func">get_embedding</span>(text: str) -> bytes:
+    response = openai_client.embeddings.create(
+        model=<span class="string">"text-embedding-3-small"</span>, input=text,
+    )
+    <span class="keyword">return</span> np.array(response.data[<span class="num">0</span>].embedding, dtype=np.float32).tobytes()</code></pre>
+
+<h2>Step 3: Context-Aware Cache Lookup</h2>
+<pre><code><span class="keyword">def</span> <span class="func">lookup_conversation_cache</span>(messages: list, user_id: str, threshold: float = <span class="num">0.12</span>):
+    <span class="string">"""Search cache for similar conversation contexts, scoped to user."""</span>
+    context = build_context_string(messages)
+    query_vec = get_embedding(context)
+
+    <span class="comment"># Hybrid search: filter by user_id TAG + KNN on context embedding</span>
+    results = client.execute_command(
+        <span class="string">"FT.SEARCH"</span>, <span class="string">"conv_cache_idx"</span>,
+        <span class="string">f"@user_id:{{{user_id}}}=>[KNN 1 @embedding $query_vec]"</span>,
+        <span class="string">"PARAMS"</span>, <span class="string">"2"</span>, <span class="string">"query_vec"</span>, query_vec,
+        <span class="string">"DIALECT"</span>, <span class="string">"2"</span>,
+    )
+
+    <span class="keyword">if</span> results[<span class="num">0</span>] > <span class="num">0</span>:
+        fields = results[<span class="num">2</span>]
+        fd = {fields[j]: fields[j+<span class="num">1</span>] <span class="keyword">for</span> j <span class="keyword">in</span> <span class="func">range</span>(<span class="num">0</span>, <span class="func">len</span>(fields), <span class="num">2</span>)}
+        score = <span class="func">float</span>(fd.get(<span class="string">"__embedding_score"</span>, <span class="string">"999"</span>))
+        <span class="keyword">if</span> score < threshold:
+            <span class="keyword">return</span> {<span class="string">"hit"</span>: <span class="keyword">True</span>, <span class="string">"response"</span>: fd.get(<span class="string">"response"</span>, <span class="string">""</span>), <span class="string">"score"</span>: score}
+
+    <span class="keyword">return</span> {<span class="string">"hit"</span>: <span class="keyword">False</span>}
+
+<span class="keyword">def</span> <span class="func">store_conversation_cache</span>(messages: list, response: str, user_id: str):
+    <span class="string">"""Cache a conversation context + response."""</span>
+    context = build_context_string(messages)
+    embedding_bytes = get_embedding(context)
+    key_hash = hashlib.md5(context.encode()).hexdigest()
+    cache_key = <span class="string">f"conv_cache:{user_id}:{key_hash}"</span>
+
+    client.hset(cache_key, mapping={
+        <span class="string">"context_summary"</span>: context,
+        <span class="string">"response"</span>: response,
+        <span class="string">"user_id"</span>: user_id,
+        <span class="string">"turn_count"</span>: <span class="func">str</span>(<span class="func">len</span>(messages)),
+        <span class="string">"embedding"</span>: embedding_bytes,
+    })
+    client.expire(cache_key, <span class="num">1800</span>)  <span class="comment"># 30 min TTL for conversations</span></code></pre>
+
+<h2>Step 4: Full Conversation Flow with Caching</h2>
+<pre><code><span class="keyword">def</span> <span class="func">chat_with_cache</span>(messages: list, user_id: str) -> dict:
+    <span class="string">"""Chat with LLM, using conversation-aware semantic cache."""</span>
+    start = time.time()
+
+    <span class="comment"># Check cache</span>
+    cache = lookup_conversation_cache(messages, user_id)
+    <span class="keyword">if</span> cache[<span class="string">"hit"</span>]:
+        <span class="keyword">return</span> {
+            <span class="string">"response"</span>: cache[<span class="string">"response"</span>],
+            <span class="string">"source"</span>: <span class="string">"cache"</span>,
+            <span class="string">"score"</span>: cache[<span class="string">"score"</span>],
+            <span class="string">"latency_ms"</span>: <span class="func">round</span>((time.time() - start) * <span class="num">1000</span>, <span class="num">1</span>),
+        }
+
+    <span class="comment"># Cache miss — call LLM</span>
+    llm = openai_client.chat.completions.create(
+        model=<span class="string">"gpt-4"</span>, messages=messages,
+    )
+    answer = llm.choices[<span class="num">0</span>].message.content
+
+    <span class="comment"># Store in cache</span>
+    store_conversation_cache(messages, answer, user_id)
+
+    <span class="keyword">return</span> {
+        <span class="string">"response"</span>: answer,
+        <span class="string">"source"</span>: <span class="string">"llm"</span>,
+        <span class="string">"latency_ms"</span>: <span class="func">round</span>((time.time() - start) * <span class="num">1000</span>, <span class="num">1</span>),
+    }
+
+<span class="comment"># Example multi-turn conversation</span>
+convo = [
+    {<span class="string">"role"</span>: <span class="string">"user"</span>, <span class="string">"content"</span>: <span class="string">"What is Valkey?"</span>},
+    {<span class="string">"role"</span>: <span class="string">"assistant"</span>, <span class="string">"content"</span>: <span class="string">"Valkey is an open-source in-memory data store..."</span>},
+    {<span class="string">"role"</span>: <span class="string">"user"</span>, <span class="string">"content"</span>: <span class="string">"How does it handle vector search?"</span>},
+]
+
+result = chat_with_cache(convo, user_id=<span class="string">"user_123"</span>)
+<span class="func">print</span>(<span class="string">f"Source: {result['source']}, Latency: {result['latency_ms']}ms"</span>)</code></pre>
+
+<div class="callout">
+<p><strong>Why TAG filter?</strong> <code>@user_id:{user_123}</code> ensures User A's cached conversations don't leak to User B. The hybrid query (TAG + KNN) runs as a single atomic operation — pre-filters by user, then finds the nearest conversation context.</p>
+</div>
+
+<h2>Cache Isolation Strategies</h2>
+<table>
+<tr><th>Strategy</th><th>TAG Filter</th><th>Best For</th></tr>
+<tr><td>Per-user</td><td><code>@user_id:{user_123}</code></td><td>Personalized assistants</td></tr>
+<tr><td>Per-session</td><td><code>@session_id:{sess_abc}</code></td><td>Short-lived chats</td></tr>
+<tr><td>Global (shared)</td><td>No filter (<code>*</code>)</td><td>FAQ bots, common queries</td></tr>
+<tr><td>Per-model</td><td><code>@model:{gpt-4}</code></td><td>Multi-model deployments</td></tr>
+</table>
+
+<div class="nav-prev-next">
+<a href="01-getting-started.html" class="prev"><span class="label">← Previous</span><span class="title">01 — Getting Started</span></a>
+<a href="03-production.html" class="next"><span class="label">Next →</span><span class="title">03 — Production Patterns</span></a>
+</div>
+</article></body></html>

@@ -1,0 +1,205 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Semantic Caching Demo — Valkey for AI</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
+<style>
+*,*::before,*::after{margin:0;padding:0;box-sizing:border-box}
+:root{--bg:#0a0a0a;--card:rgba(255,255,255,.04);--brd:rgba(255,255,255,.08);--t1:#f5f5f7;--t2:rgba(245,245,247,.6);--t3:rgba(245,245,247,.4);--accent:#6366f1;--accent2:#8b5cf6;--hit:#10b981;--miss:#f43f5e;--radius:12px;--font:'Inter',system-ui,sans-serif}
+body{font-family:var(--font);background:var(--bg);color:var(--t1);line-height:1.5;padding:24px;max-width:1000px;margin:0 auto}
+h1{font-size:28px;font-weight:900;letter-spacing:-.03em;margin-bottom:4px}
+h1 span{color:var(--accent)}
+.subtitle{font-size:14px;color:var(--t2);margin-bottom:24px}
+.stat-row{display:flex;gap:12px;margin-bottom:20px}
+.stat{background:var(--card);border:1px solid var(--brd);border-radius:var(--radius);padding:14px 18px;flex:1;text-align:center}
+.stat .num{font-size:28px;font-weight:900}
+.stat .num.hit-color{color:var(--hit)}
+.stat .num.miss-color{color:var(--miss)}
+.stat .num.accent-color{color:var(--accent)}
+.stat .num.savings-color{color:#fbbf24}
+.stat .label{font-size:11px;color:var(--t3);text-transform:uppercase}
+.panel{background:var(--card);border:1px solid var(--brd);border-radius:var(--radius);margin-bottom:16px;overflow:hidden}
+.panel-header{padding:14px 18px;border-bottom:1px solid var(--brd);display:flex;align-items:center;justify-content:space-between}
+.panel-header h3{font-size:14px;font-weight:700}
+.panel-body{padding:16px 18px}
+.prompt-input{display:flex;gap:8px;margin-bottom:16px}
+.prompt-input input{flex:1;background:rgba(255,255,255,.06);border:1px solid var(--brd);border-radius:8px;padding:12px 16px;color:var(--t1);font-family:var(--font);font-size:14px;outline:none}
+.prompt-input input:focus{border-color:var(--accent)}
+.prompt-input input::placeholder{color:var(--t3)}
+button{background:linear-gradient(135deg,var(--accent),var(--accent2));color:#fff;border:none;border-radius:8px;padding:12px 20px;font-family:var(--font);font-size:13px;font-weight:600;cursor:pointer;transition:.2s}
+button:hover{transform:translateY(-1px)}
+button.secondary{background:rgba(255,255,255,.06);color:var(--t1);border:1px solid var(--brd)}
+.threshold-row{display:flex;align-items:center;gap:12px;margin-bottom:16px;padding:12px 16px;background:rgba(255,255,255,.02);border-radius:8px}
+.threshold-row label{font-size:13px;color:var(--t2);min-width:120px}
+.threshold-row input[type=range]{flex:1;accent-color:var(--accent)}
+.threshold-row .val{font-size:14px;font-weight:700;color:var(--accent);min-width:40px}
+.quick-prompts{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:16px}
+.quick-prompts button{font-size:12px;padding:6px 14px;background:rgba(255,255,255,.06);border:1px solid var(--brd);color:var(--t2)}
+.result-card{border-radius:8px;padding:16px;margin-bottom:8px;border-left:4px solid}
+.result-card.hit{background:rgba(16,185,129,.06);border-color:var(--hit)}
+.result-card.miss{background:rgba(244,63,94,.06);border-color:var(--miss)}
+.result-card .status{font-size:13px;font-weight:700;margin-bottom:4px}
+.result-card .status.hit{color:var(--hit)}
+.result-card .status.miss{color:var(--miss)}
+.result-card .prompt-text{font-size:14px;margin-bottom:6px}
+.result-card .response-text{font-size:13px;color:var(--t2);margin-bottom:6px}
+.result-card .meta{font-size:11px;color:var(--t3)}
+.score-bar{height:6px;background:rgba(255,255,255,.06);border-radius:3px;margin-top:8px;overflow:hidden}
+.score-fill{height:100%;border-radius:3px;transition:.3s}
+.cache-viz{display:flex;gap:4px;flex-wrap:wrap;margin-top:8px}
+.cache-entry{width:32px;height:32px;border-radius:6px;background:rgba(99,102,241,.2);border:1px solid rgba(99,102,241,.3);display:flex;align-items:center;justify-content:center;font-size:9px;font-weight:700;color:var(--accent);transition:.3s;cursor:default}
+.cache-entry.fresh{background:rgba(16,185,129,.2);border-color:rgba(16,185,129,.3);color:var(--hit)}
+.cache-entry.used{background:rgba(251,191,36,.2);border-color:rgba(251,191,36,.3);color:#fbbf24}
+@media(max-width:600px){.stat-row{flex-wrap:wrap}.stat{min-width:calc(50% - 6px)}}
+</style>
+</head>
+<body>
+<h1>Semantic <span>Caching</span> Demo</h1>
+<p class="subtitle">Type a prompt to see if it matches a cached entry. Adjust the similarity threshold to control hit sensitivity. Watch cost savings grow in real-time.</p>
+
+<div class="stat-row">
+<div class="stat"><div class="num hit-color" id="hits">0</div><div class="label">Cache Hits</div></div>
+<div class="stat"><div class="num miss-color" id="misses">0</div><div class="label">Cache Misses</div></div>
+<div class="stat"><div class="num accent-color" id="hitRate">0%</div><div class="label">Hit Rate</div></div>
+<div class="stat"><div class="num savings-color" id="savings">$0.00</div><div class="label">Cost Saved</div></div>
+</div>
+
+<div class="panel">
+<div class="panel-header"><h3>💬 Ask a Question</h3></div>
+<div class="panel-body">
+<div class="prompt-input">
+<input id="promptInput" placeholder="Type your prompt..." value="What is Valkey?">
+<button onclick="submitPrompt()">Send</button>
+</div>
+<div class="quick-prompts">
+<button class="secondary" onclick="quickPrompt(0)">What is Valkey?</button>
+<button class="secondary" onclick="quickPrompt(1)">Explain Valkey to me</button>
+<button class="secondary" onclick="quickPrompt(2)">How does Redis work?</button>
+<button class="secondary" onclick="quickPrompt(3)">What is vector search?</button>
+<button class="secondary" onclick="quickPrompt(4)">Tell me about embeddings</button>
+<button class="secondary" onclick="quickPrompt(5)">How to cook pasta</button>
+<button class="secondary" onclick="quickPrompt(6)">What is semantic caching?</button>
+<button class="secondary" onclick="quickPrompt(7)">Explain caching for LLMs</button>
+</div>
+<div class="threshold-row">
+<label>Similarity Threshold:</label>
+<input type="range" id="thresholdSlider" min="0.01" max="0.5" step="0.01" value="0.15" oninput="updateThreshold()">
+<span class="val" id="thresholdVal">0.15</span>
+</div>
+</div>
+</div>
+
+<div class="panel">
+<div class="panel-header"><h3>📋 Results</h3><button class="secondary" onclick="clearResults()" style="font-size:12px;padding:4px 12px">Clear</button></div>
+<div class="panel-body"><div id="results"></div></div>
+</div>
+
+<div class="panel">
+<div class="panel-header"><h3>🗃️ Cache Contents (<span id="cacheSize">0</span> entries)</h3><button class="secondary" onclick="clearCache()" style="font-size:12px;padding:4px 12px">Flush Cache</button></div>
+<div class="panel-body"><div class="cache-viz" id="cacheViz"></div><div id="cacheList" style="margin-top:12px;font-size:12px;color:var(--t3)"></div></div>
+</div>
+
+<script>
+const quickPrompts=["What is Valkey?","Explain Valkey to me","How does Redis work?","What is vector search?","Tell me about embeddings","How to cook pasta","What is semantic caching?","Explain caching for LLMs"];
+const responses={"What is Valkey?":"Valkey is an open-source, high-performance in-memory data store. It's the community-driven successor to Redis, supporting strings, hashes, lists, sets, sorted sets, streams, and more. It's ideal for caching, session management, real-time analytics, and AI workloads like vector search and semantic caching.","Explain Valkey to me":"Valkey is an open-source in-memory data store forked from Redis. It provides sub-millisecond latency for read/write operations and supports rich data structures. It's widely used for caching, session storage, and increasingly for AI use cases like vector similarity search.","How does Redis work?":"Redis (and its fork Valkey) works as an in-memory key-value store. Data is stored in RAM for ultra-fast access. It supports multiple data structures (strings, hashes, lists, sets, sorted sets, streams) and provides persistence options (RDB snapshots, AOF logs) for durability.","What is vector search?":"Vector search (also called similarity search) finds items that are semantically similar by comparing their vector embeddings. You encode data as high-dimensional vectors using ML models, then use algorithms like HNSW to find the nearest neighbors. Valkey supports this via the valkey-search module with FT.CREATE and FT.SEARCH commands.","Tell me about embeddings":"Embeddings are numerical vector representations of data (text, images, etc.) produced by ML models. They capture semantic meaning — similar items have similar vectors. Common embedding models include OpenAI's text-embedding-3-small (1536 dimensions) and Cohere's embed-v3. Embeddings are stored in databases like Valkey for fast similarity search.","How to cook pasta":"Boil a large pot of salted water. Add pasta and cook until al dente (usually 8-12 minutes depending on the type). Drain, reserving some pasta water. Toss with your sauce of choice, adding pasta water as needed for consistency.","What is semantic caching?":"Semantic caching stores LLM responses indexed by the semantic meaning of the prompt (using vector embeddings), not just the exact text. When a new prompt arrives, it's compared to cached prompts using vector similarity. If a close match is found (below a threshold), the cached response is returned instead of calling the LLM — saving cost and reducing latency from seconds to milliseconds.","Explain caching for LLMs":"LLM caching reduces the cost and latency of AI applications by storing and reusing previous responses. Semantic caching goes beyond exact-match by using vector embeddings to match prompts by meaning. For example, 'What is Valkey?' and 'Can you explain Valkey?' would match semantically even though the strings differ."};
+
+// Simple cosine similarity using pre-computed "topic clusters"
+const topicVecs={"What is Valkey?":[.9,.1,.05,.02,.01,.01,.02,.01],"Explain Valkey to me":[.88,.12,.04,.02,.01,.01,.02,.01],"How does Redis work?":[.7,.2,.05,.02,.01,.01,.01,.01],"What is vector search?":[.1,.05,.02,.85,.15,.01,.05,.02],"Tell me about embeddings":[.1,.05,.02,.6,.5,.01,.1,.02],"How to cook pasta":[.01,.01,.01,.01,.01,.95,.01,.01],"What is semantic caching?":[.15,.05,.01,.1,.05,.01,.9,.3],"Explain caching for LLMs":[.12,.04,.01,.08,.04,.01,.85,.35]};
+
+let cache=[],hitCount=0,missCount=0,threshold=.15;
+
+function cosine(a,b){let d=0,na=0,nb=0;for(let i=0;i<a.length;i++){d+=a[i]*b[i];na+=a[i]*a[i];nb+=b[i]*b[i]}return 1-(d/(Math.sqrt(na)*Math.sqrt(nb)))}
+
+function getVec(text){
+// Find the closest known prompt to simulate embedding
+let best=null,bestScore=999;
+for(const[p,v]of Object.entries(topicVecs)){
+const words=text.toLowerCase().split(/\s+/);
+const pWords=p.toLowerCase().split(/\s+/);
+let overlap=0;
+for(const w of words)if(pWords.some(pw=>pw.includes(w)||w.includes(pw)))overlap++;
+const sim=overlap/Math.max(words.length,1);
+// Add some noise for variation
+const noisy=v.map(x=>x+(Math.random()-.5)*.1);
+if(sim>0){const score=1-sim;if(score<bestScore){bestScore=score;best=noisy}}
+}
+return best||topicVecs["What is Valkey?"].map(x=>x+(Math.random()-.5)*.3);
+}
+
+function findResponse(text){
+let best=null,bestScore=999;
+for(const[p,r]of Object.entries(responses)){
+const words=text.toLowerCase().split(/\s+/);
+const pWords=p.toLowerCase().split(/\s+/);
+let overlap=0;
+for(const w of words)if(pWords.some(pw=>pw.includes(w)||w.includes(pw)))overlap++;
+if(overlap>0){const score=1-overlap/words.length;if(score<bestScore){bestScore=score;best=r}}
+}
+return best||"I can help with questions about Valkey, Redis, vector search, semantic caching, and more. Try asking about one of these topics!";
+}
+
+function submitPrompt(){
+const text=document.getElementById("promptInput").value.trim();
+if(!text)return;
+const queryVec=getVec(text);
+let bestHit=null,bestScore=999;
+
+// Search cache
+for(const entry of cache){
+const score=cosine(queryVec,entry.vec);
+if(score<bestScore){bestScore=score;bestHit=entry}
+}
+
+const el=document.getElementById("results");
+const isHit=bestHit&&bestScore<threshold;
+
+if(isHit){
+hitCount++;
+bestHit.hitCount=(bestHit.hitCount||0)+1;
+const latency=(Math.random()*5+1).toFixed(1);
+el.innerHTML=`<div class="result-card hit"><div class="status hit">✅ CACHE HIT (${latency}ms)</div><div class="prompt-text"><strong>Your prompt:</strong> ${text}</div><div class="response-text"><strong>Cached response:</strong> ${bestHit.response}</div><div class="meta">Matched: "${bestHit.prompt}" · Distance: ${bestScore.toFixed(4)} · Threshold: ${threshold}</div><div class="score-bar"><div class="score-fill" style="width:${Math.max(5,Math.min(100,(1-bestScore)*100))}%;background:var(--hit)"></div></div></div>`+el.innerHTML;
+}else{
+missCount++;
+const response=findResponse(text);
+const latency=(Math.random()*2000+500).toFixed(0);
+cache.push({prompt:text,response,vec:queryVec,hitCount:0});
+el.innerHTML=`<div class="result-card miss"><div class="status miss">❌ CACHE MISS (${latency}ms → LLM)</div><div class="prompt-text"><strong>Your prompt:</strong> ${text}</div><div class="response-text"><strong>LLM response:</strong> ${response}</div><div class="meta">No match within threshold ${threshold} · Response cached for future hits${bestHit?" · Nearest: "+bestScore.toFixed(4):""}</div><div class="score-bar"><div class="score-fill" style="width:${bestHit?Math.max(5,Math.min(100,(1-bestScore)*100)):5}%;background:var(--miss)"></div></div></div>`+el.innerHTML;
+}
+updateStats();
+renderCache();
+}
+
+function quickPrompt(i){document.getElementById("promptInput").value=quickPrompts[i];submitPrompt()}
+function updateThreshold(){threshold=parseFloat(document.getElementById("thresholdSlider").value);document.getElementById("thresholdVal").textContent=threshold.toFixed(2)}
+function clearResults(){document.getElementById("results").innerHTML=""}
+function clearCache(){cache=[];hitCount=0;missCount=0;updateStats();renderCache()}
+
+function updateStats(){
+const total=hitCount+missCount;
+const rate=total>0?(hitCount/total*100):0;
+document.getElementById("hits").textContent=hitCount;
+document.getElementById("misses").textContent=missCount;
+document.getElementById("hitRate").textContent=rate.toFixed(0)+"%";
+document.getElementById("savings").textContent="$"+(hitCount*.015).toFixed(2);
+}
+
+function renderCache(){
+document.getElementById("cacheSize").textContent=cache.length;
+const viz=document.getElementById("cacheViz");
+const list=document.getElementById("cacheList");
+viz.innerHTML="";list.innerHTML="";
+cache.forEach((e,i)=>{
+const cls=e.hitCount>0?"used":"fresh";
+const d=document.createElement("div");
+d.className="cache-entry "+cls;
+d.textContent=i+1;
+d.title=e.prompt;
+viz.appendChild(d);
+list.innerHTML+=`<div style="margin-bottom:4px">📦 <strong>${i+1}</strong>: "${e.prompt.slice(0,50)}..." ${e.hitCount>0?"("+e.hitCount+" hits)":""}</div>`;
+});
+}
+</script>
+</body>
+</html>

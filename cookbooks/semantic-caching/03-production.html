@@ -1,0 +1,163 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>03 — Production Patterns for Semantic Caching — Valkey for AI</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../cookbook.css">
+</head>
+<body>
+<nav class="nav"><div class="nav-inner"><a href="/" class="nav-logo"><img src="/valkey-logo.svg" alt="Valkey"><span class="accent">for ai</span></a><div class="nav-links"><a href="/#use-cases">Use Cases</a><a href="https://github.com/meet-bhagdev/valkeyforai" target="_blank">GitHub</a></div></div></nav>
+<article>
+<div class="breadcrumb"><a href="/">Home</a> → <a href="/cookbooks/semantic-caching/">Semantic Caching</a> → 03 Production Patterns</div>
+<div class="meta"><span class="diff-hard">Advanced</span><span class="lang">Python</span><span class="lang">~25 min</span></div>
+<h1>Production <span class="gradient">Patterns</span></h1>
+<p class="lead">Similarity threshold tuning, cache hit rate monitoring, eviction strategies, TTL management, and cost tracking for production semantic caches.</p>
+
+<h2>Pattern 1: Similarity Threshold Tuning</h2>
+<p>The threshold controls the trade-off between hit rate and answer quality:</p>
+<table>
+<tr><th>Threshold (COSINE)</th><th>Hit Rate</th><th>Quality Risk</th><th>Best For</th></tr>
+<tr><td><code>0.05</code> (very strict)</td><td>Low (~20%)</td><td>Very low</td><td>Medical, legal, financial</td></tr>
+<tr><td><code>0.15</code> (balanced)</td><td>Medium (~50%)</td><td>Low</td><td>General chatbots</td></tr>
+<tr><td><code>0.30</code> (relaxed)</td><td>High (~70%)</td><td>Medium</td><td>FAQ bots, support</td></tr>
+<tr><td><code>0.50</code> (very relaxed)</td><td>Very high (~85%)</td><td>High — stale answers</td><td>Not recommended</td></tr>
+</table>
+
+<pre><code><span class="comment"># Test different thresholds to find the right balance</span>
+<span class="keyword">def</span> <span class="func">evaluate_threshold</span>(test_pairs: list, threshold: float):
+    <span class="string">"""Evaluate cache quality at a given threshold."""</span>
+    hits = <span class="num">0</span>
+    false_positives = <span class="num">0</span>
+
+    <span class="keyword">for</span> query, expected_similar <span class="keyword">in</span> test_pairs:
+        result = semantic_cache_lookup(query)
+        <span class="keyword">if</span> result[<span class="string">"hit"</span>] <span class="keyword">and</span> result[<span class="string">"score"</span>] < threshold:
+            hits += <span class="num">1</span>
+            <span class="keyword">if not</span> expected_similar:
+                false_positives += <span class="num">1</span>
+
+    hit_rate = hits / <span class="func">len</span>(test_pairs)
+    fp_rate = false_positives / <span class="func">max</span>(<span class="num">1</span>, hits)
+    <span class="func">print</span>(<span class="string">f"Threshold {threshold}: hit_rate={hit_rate:.1%}, false_positive_rate={fp_rate:.1%}"</span>)</code></pre>
+
+<h2>Pattern 2: Cache Hit Rate Monitoring</h2>
+<pre><code><span class="keyword">import</span> redis
+
+client = redis.Redis(host=<span class="string">"localhost"</span>, port=<span class="num">6379</span>)
+
+<span class="keyword">def</span> <span class="func">record_cache_event</span>(event_type: str):
+    <span class="string">"""Track cache hits and misses using atomic counters."""</span>
+    <span class="comment"># Increment the counter</span>
+    client.incr(<span class="string">f"cache:metrics:{event_type}"</span>)
+
+    <span class="comment"># Also track hourly for time-series analysis</span>
+    <span class="keyword">from</span> datetime <span class="keyword">import</span> datetime
+    hour_key = datetime.now().strftime(<span class="string">"%Y%m%d%H"</span>)
+    counter_key = <span class="string">f"cache:metrics:{event_type}:{hour_key}"</span>
+    client.incr(counter_key)
+    client.expire(counter_key, <span class="num">86400</span> * <span class="num">7</span>)  <span class="comment"># Keep 7 days</span>
+
+<span class="keyword">def</span> <span class="func">get_cache_stats</span>() -> dict:
+    <span class="string">"""Get current cache performance metrics."""</span>
+    hits = <span class="func">int</span>(client.get(<span class="string">"cache:metrics:hit"</span>) <span class="keyword">or</span> <span class="num">0</span>)
+    misses = <span class="func">int</span>(client.get(<span class="string">"cache:metrics:miss"</span>) <span class="keyword">or</span> <span class="num">0</span>)
+    total = hits + misses
+    hit_rate = hits / total <span class="keyword">if</span> total > <span class="num">0</span> <span class="keyword">else</span> <span class="num">0</span>
+
+    <span class="comment"># Estimate cost savings (GPT-4: ~$0.03/1K tokens, avg 500 tokens/request)</span>
+    avg_cost_per_call = <span class="num">0.015</span>  <span class="comment"># $0.03/1K * 500 tokens</span>
+    savings = hits * avg_cost_per_call
+
+    <span class="keyword">return</span> {
+        <span class="string">"total_requests"</span>: total,
+        <span class="string">"hits"</span>: hits,
+        <span class="string">"misses"</span>: misses,
+        <span class="string">"hit_rate"</span>: <span class="func">round</span>(hit_rate, <span class="num">3</span>),
+        <span class="string">"estimated_savings_usd"</span>: <span class="func">round</span>(savings, <span class="num">2</span>),
+    }
+
+<span class="comment"># Usage in ask_with_cache:</span>
+<span class="comment"># if cache_hit: record_cache_event("hit")</span>
+<span class="comment"># else: record_cache_event("miss")</span></code></pre>
+
+<h2>Pattern 3: TTL Strategies</h2>
+<pre><code><span class="comment"># Strategy 1: Fixed TTL — simple, predictable</span>
+client.expire(cache_key, <span class="num">3600</span>)  <span class="comment"># 1 hour</span>
+
+<span class="comment"># Strategy 2: Category-based TTL</span>
+TTL_MAP = {
+    <span class="string">"factual"</span>: <span class="num">86400</span>,      <span class="comment"># 24h — facts don't change fast</span>
+    <span class="string">"opinion"</span>: <span class="num">3600</span>,       <span class="comment"># 1h — opinions evolve</span>
+    <span class="string">"real-time"</span>: <span class="num">300</span>,      <span class="comment"># 5 min — stock prices, weather</span>
+    <span class="string">"conversation"</span>: <span class="num">1800</span>,  <span class="comment"># 30 min — chat context</span>
+}
+
+<span class="comment"># Strategy 3: Sliding TTL — reset on each hit</span>
+<span class="keyword">def</span> <span class="func">cache_hit_with_refresh</span>(cache_key: str, ttl: int = <span class="num">3600</span>):
+    <span class="string">"""On cache hit, refresh the TTL to keep popular entries alive."""</span>
+    response = client.hget(cache_key, <span class="string">"response"</span>)
+    client.expire(cache_key, ttl)  <span class="comment"># Reset TTL</span>
+    <span class="keyword">return</span> response</code></pre>
+
+<h2>Pattern 4: Memory Management</h2>
+<pre><code><span class="comment"># Set maxmemory policy for cache eviction</span>
+<span class="comment"># In valkey.conf or via CONFIG SET:</span>
+<span class="comment"># maxmemory 1gb</span>
+<span class="comment"># maxmemory-policy allkeys-lru</span>
+<span class="comment">#</span>
+<span class="comment"># LRU = Least Recently Used — evicts least-accessed cache entries first</span>
+<span class="comment"># This is ideal for semantic caching where popular queries should stay</span>
+
+<span class="comment"># Check memory usage</span>
+info = client.info(<span class="string">"memory"</span>)
+used_mb = info[<span class="string">"used_memory"</span>] / (<span class="num">1024</span> * <span class="num">1024</span>)
+<span class="func">print</span>(<span class="string">f"Memory: {used_mb:.1f} MB"</span>)
+
+<span class="comment"># Estimate cache capacity</span>
+<span class="comment"># Each entry: ~6KB (1536 dims * 4 bytes + prompt + response text)</span>
+<span class="comment"># 1 GB ≈ ~170,000 cached entries</span></code></pre>
+
+<h2>Pattern 5: Cache Invalidation</h2>
+<pre><code><span class="comment"># Invalidate specific cached entries</span>
+<span class="keyword">def</span> <span class="func">invalidate_by_topic</span>(topic_keyword: str):
+    <span class="string">"""Remove cached entries matching a topic (e.g., after a data update)."""</span>
+    <span class="comment"># Use FT.SEARCH with TEXT filter to find matching entries</span>
+    results = client.execute_command(
+        <span class="string">"FT.SEARCH"</span>, <span class="string">"cache_idx"</span>,
+        <span class="string">f"@prompt:{topic_keyword}"</span>,
+        <span class="string">"NOCONTENT"</span>,  <span class="comment"># Only return keys, not fields</span>
+    )
+
+    <span class="keyword">if</span> results[<span class="num">0</span>] > <span class="num">0</span>:
+        keys = results[<span class="num">1</span>:]
+        <span class="keyword">for</span> key <span class="keyword">in</span> keys:
+            client.delete(key)
+        <span class="func">print</span>(<span class="string">f"Invalidated {len(keys)} cached entries for '{topic_keyword}'"</span>)
+
+<span class="comment"># Example: product info changed, invalidate related cache</span>
+invalidate_by_topic(<span class="string">"pricing"</span>)</code></pre>
+
+<h2>Production Checklist</h2>
+<table>
+<tr><th>Area</th><th>Recommendation</th></tr>
+<tr><td>Threshold</td><td>Start at 0.15 (COSINE), tune with A/B testing</td></tr>
+<tr><td>TTL</td><td>1h for general, 24h for facts, 5min for real-time</td></tr>
+<tr><td>Monitoring</td><td>Track hit rate, latency, cost savings hourly</td></tr>
+<tr><td>Memory</td><td>Set <code>maxmemory-policy allkeys-lru</code></td></tr>
+<tr><td>Invalidation</td><td>Use TEXT search to find and delete stale entries</td></tr>
+<tr><td>Isolation</td><td>TAG filters for multi-tenant deployments</td></tr>
+<tr><td>Embeddings</td><td>Use <code>text-embedding-3-small</code> (fast, cheap, 1536 dims)</td></tr>
+<tr><td>Index</td><td>HNSW with COSINE for OpenAI/Bedrock embeddings</td></tr>
+</table>
+
+<div class="callout">
+<p><strong>Reference:</strong> This pattern is described in the official AWS documentation for <a href="https://docs.aws.amazon.com/AmazonElastiCache/latest/dg/elasticache-use-cases.html" target="_blank" style="color:var(--accent)">ElastiCache semantic caching use cases</a>, and was featured in the AWS re:Invent session on semantic caching for multi-turn agents with ElastiCache.</p>
+</div>
+
+<div class="nav-prev-next">
+<a href="02-multiturn-caching.html" class="prev"><span class="label">← Previous</span><span class="title">02 — Multi-Turn Caching</span></a>
+<a href="/cookbooks/semantic-caching/" class="next"><span class="label">Back to →</span><span class="title">Semantic Caching Cookbooks</span></a>
+</div>
+</article></body></html>

@@ -1,0 +1,193 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>01 — Getting Started with Semantic Caching — Valkey for AI</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../cookbook.css">
+</head>
+<body>
+<nav class="nav"><div class="nav-inner"><a href="/" class="nav-logo"><img src="/valkey-logo.svg" alt="Valkey"><span class="accent">for ai</span></a><div class="nav-links"><a href="/#use-cases">Use Cases</a><a href="https://github.com/meet-bhagdev/valkeyforai" target="_blank">GitHub</a></div></div></nav>
+<article>
+<div class="breadcrumb"><a href="/">Home</a> → <a href="/cookbooks/semantic-caching/">Semantic Caching</a> → 01 Getting Started</div>
+<div class="meta"><span class="diff-easy">Beginner</span><span class="lang">Python</span><span class="lang">~15 min</span></div>
+<h1>Getting Started with <span class="gradient">Semantic Caching</span></h1>
+<p class="lead">Build a semantic cache that stores LLM responses and returns cached answers for semantically similar prompts — cutting costs by 60%+ and latency from seconds to milliseconds.</p>
+
+<h2>How Semantic Caching Works</h2>
+<pre><code><span class="comment"># Flow:</span>
+<span class="comment"># 1. User sends prompt</span>
+<span class="comment"># 2. Embed the prompt → vector</span>
+<span class="comment"># 3. FT.SEARCH: find similar cached prompts (KNN)</span>
+<span class="comment"># 4. If similarity score &lt; threshold → CACHE HIT → return cached response</span>
+<span class="comment"># 5. Else → CACHE MISS → call LLM → cache the prompt+response → return</span>
+<span class="comment">#</span>
+<span class="comment">#  User Prompt → Embed → FT.SEARCH KNN → Hit? → Return cached</span>
+<span class="comment">#                                        → Miss? → Call LLM → HSET → Return</span></code></pre>
+
+<div class="callout">
+<p><strong>Why semantic, not exact?</strong> "What is Valkey?" and "Can you explain what Valkey is?" are different strings but mean the same thing. Exact-match caching misses these. Semantic caching uses vector similarity to match by <em>meaning</em>, dramatically increasing hit rates.</p>
+</div>
+
+<h2>Prerequisites</h2>
+<ul>
+<li>Valkey with the <strong>valkey-search</strong> module loaded (or ElastiCache for Valkey 8.2+)</li>
+<li>Python 3.9+ with <code>redis</code>, <code>openai</code>, <code>numpy</code></li>
+</ul>
+
+<h2>Step 1: Setup</h2>
+<pre><code>pip install redis openai numpy</code></pre>
+<pre><code><span class="keyword">import</span> redis
+<span class="keyword">import</span> numpy <span class="keyword">as</span> np
+<span class="keyword">import</span> json
+<span class="keyword">import</span> hashlib
+<span class="keyword">import</span> time
+<span class="keyword">from</span> openai <span class="keyword">import</span> OpenAI
+
+client = redis.Redis(host=<span class="string">"localhost"</span>, port=<span class="num">6379</span>)
+openai_client = OpenAI()
+
+EMBEDDING_MODEL = <span class="string">"text-embedding-3-small"</span>
+EMBEDDING_DIM = <span class="num">1536</span>
+SIMILARITY_THRESHOLD = <span class="num">0.15</span>  <span class="comment"># COSINE distance: 0=identical, 2=opposite</span>
+CACHE_TTL = <span class="num">3600</span>  <span class="comment"># 1 hour</span></code></pre>
+
+<h2>Step 2: Create the Cache Index</h2>
+<pre><code><span class="keyword">def</span> <span class="func">create_cache_index</span>():
+    <span class="string">"""Create a vector index for the semantic cache."""</span>
+    <span class="keyword">try</span>:
+        client.execute_command(
+            <span class="string">"FT.CREATE"</span>, <span class="string">"cache_idx"</span>,
+            <span class="string">"SCHEMA"</span>,
+            <span class="string">"prompt"</span>, <span class="string">"TEXT"</span>,
+            <span class="string">"response"</span>, <span class="string">"TEXT"</span>,
+            <span class="string">"embedding"</span>, <span class="string">"VECTOR"</span>, <span class="string">"HNSW"</span>, <span class="string">"6"</span>,
+            <span class="string">"TYPE"</span>, <span class="string">"FLOAT32"</span>,
+            <span class="string">"DIM"</span>, <span class="func">str</span>(EMBEDDING_DIM),
+            <span class="string">"DISTANCE_METRIC"</span>, <span class="string">"COSINE"</span>,
+        )
+        <span class="func">print</span>(<span class="string">"Cache index created"</span>)
+    <span class="keyword">except</span> redis.ResponseError:
+        <span class="func">print</span>(<span class="string">"Cache index already exists"</span>)
+
+create_cache_index()</code></pre>
+
+<h2>Step 3: Embedding Helper</h2>
+<pre><code><span class="keyword">def</span> <span class="func">get_embedding</span>(text: str) -> bytes:
+    <span class="string">"""Embed text using OpenAI and return as FLOAT32 bytes."""</span>
+    response = openai_client.embeddings.create(
+        model=EMBEDDING_MODEL,
+        input=text,
+    )
+    vec = response.data[<span class="num">0</span>].embedding
+    <span class="keyword">return</span> np.array(vec, dtype=np.float32).tobytes()</code></pre>
+
+<h2>Step 4: The Semantic Cache</h2>
+<pre><code><span class="keyword">def</span> <span class="func">semantic_cache_lookup</span>(prompt: str) -> dict:
+    <span class="string">"""Check if a semantically similar prompt is cached."""</span>
+    query_vec = get_embedding(prompt)
+
+    <span class="comment"># KNN search: find the 1 nearest cached prompt</span>
+    results = client.execute_command(
+        <span class="string">"FT.SEARCH"</span>, <span class="string">"cache_idx"</span>,
+        <span class="string">"*=>[KNN 1 @embedding $query_vec]"</span>,
+        <span class="string">"PARAMS"</span>, <span class="string">"2"</span>, <span class="string">"query_vec"</span>, query_vec,
+        <span class="string">"DIALECT"</span>, <span class="string">"2"</span>,
+    )
+
+    <span class="keyword">if</span> results[<span class="num">0</span>] > <span class="num">0</span>:
+        fields = results[<span class="num">2</span>]
+        field_dict = {fields[j]: fields[j+<span class="num">1</span>] <span class="keyword">for</span> j <span class="keyword">in</span> <span class="func">range</span>(<span class="num">0</span>, <span class="func">len</span>(fields), <span class="num">2</span>)}
+        score = <span class="func">float</span>(field_dict.get(<span class="string">"__embedding_score"</span>, <span class="string">"999"</span>))
+
+        <span class="keyword">if</span> score < SIMILARITY_THRESHOLD:
+            <span class="keyword">return</span> {
+                <span class="string">"hit"</span>: <span class="keyword">True</span>,
+                <span class="string">"response"</span>: field_dict.get(<span class="string">"response"</span>, <span class="string">""</span>),
+                <span class="string">"cached_prompt"</span>: field_dict.get(<span class="string">"prompt"</span>, <span class="string">""</span>),
+                <span class="string">"score"</span>: score,
+            }
+
+    <span class="keyword">return</span> {<span class="string">"hit"</span>: <span class="keyword">False</span>}
+
+<span class="keyword">def</span> <span class="func">cache_response</span>(prompt: str, response: str, embedding_bytes: bytes):
+    <span class="string">"""Store a prompt+response in the cache."""</span>
+    cache_key = <span class="string">f"cache:{hashlib.md5(prompt.encode()).hexdigest()}"</span>
+    client.hset(cache_key, mapping={
+        <span class="string">"prompt"</span>: prompt,
+        <span class="string">"response"</span>: response,
+        <span class="string">"embedding"</span>: embedding_bytes,
+        <span class="string">"created_at"</span>: <span class="func">str</span>(time.time()),
+    })
+    client.expire(cache_key, CACHE_TTL)
+
+<span class="keyword">def</span> <span class="func">ask_with_cache</span>(prompt: str) -> dict:
+    <span class="string">"""Main function: check cache first, then call LLM if needed."""</span>
+    start = time.time()
+
+    <span class="comment"># 1. Check cache</span>
+    cache_result = semantic_cache_lookup(prompt)
+
+    <span class="keyword">if</span> cache_result[<span class="string">"hit"</span>]:
+        elapsed = (time.time() - start) * <span class="num">1000</span>
+        <span class="keyword">return</span> {
+            <span class="string">"response"</span>: cache_result[<span class="string">"response"</span>],
+            <span class="string">"source"</span>: <span class="string">"cache"</span>,
+            <span class="string">"similarity_score"</span>: cache_result[<span class="string">"score"</span>],
+            <span class="string">"latency_ms"</span>: <span class="func">round</span>(elapsed, <span class="num">1</span>),
+        }
+
+    <span class="comment"># 2. Cache miss — call LLM</span>
+    llm_response = openai_client.chat.completions.create(
+        model=<span class="string">"gpt-4"</span>,
+        messages=[{<span class="string">"role"</span>: <span class="string">"user"</span>, <span class="string">"content"</span>: prompt}],
+    )
+    answer = llm_response.choices[<span class="num">0</span>].message.content
+
+    <span class="comment"># 3. Cache the response</span>
+    embedding_bytes = get_embedding(prompt)
+    cache_response(prompt, answer, embedding_bytes)
+
+    elapsed = (time.time() - start) * <span class="num">1000</span>
+    <span class="keyword">return</span> {
+        <span class="string">"response"</span>: answer,
+        <span class="string">"source"</span>: <span class="string">"llm"</span>,
+        <span class="string">"latency_ms"</span>: <span class="func">round</span>(elapsed, <span class="num">1</span>),
+    }</code></pre>
+
+<h2>Step 5: Test It</h2>
+<pre><code><span class="comment"># First call — cache MISS (calls LLM)</span>
+result1 = ask_with_cache(<span class="string">"What is Valkey?"</span>)
+<span class="func">print</span>(<span class="string">f"Source: {result1['source']}, Latency: {result1['latency_ms']}ms"</span>)
+<span class="comment"># Source: llm, Latency: 1250.3ms</span>
+
+<span class="comment"># Second call — semantically similar — cache HIT!</span>
+result2 = ask_with_cache(<span class="string">"Can you explain what Valkey is?"</span>)
+<span class="func">print</span>(<span class="string">f"Source: {result2['source']}, Latency: {result2['latency_ms']}ms"</span>)
+<span class="comment"># Source: cache, Latency: 12.5ms  ← 100x faster!</span>
+
+<span class="comment"># Third call — different topic — cache MISS</span>
+result3 = ask_with_cache(<span class="string">"How do I cook pasta?"</span>)
+<span class="func">print</span>(<span class="string">f"Source: {result3['source']}, Latency: {result3['latency_ms']}ms"</span>)
+<span class="comment"># Source: llm, Latency: 980.7ms</span></code></pre>
+
+<h2>How It Works Under the Hood</h2>
+<table>
+<tr><th>Step</th><th>Command</th><th>Latency</th></tr>
+<tr><td>Create index</td><td><code>FT.CREATE cache_idx SCHEMA ... VECTOR HNSW ...</code></td><td>Once</td></tr>
+<tr><td>Cache lookup</td><td><code>FT.SEARCH cache_idx "*=>[KNN 1 @embedding $vec]"</code></td><td>~0.1ms</td></tr>
+<tr><td>Store in cache</td><td><code>HSET cache:key prompt "..." response "..." embedding [bytes]</code></td><td>~0.1ms</td></tr>
+<tr><td>Set TTL</td><td><code>EXPIRE cache:key 3600</code></td><td>~0.1ms</td></tr>
+<tr><td>LLM call (miss)</td><td>OpenAI API</td><td>500-3000ms</td></tr>
+</table>
+
+<div class="callout">
+<p><strong>Cost savings:</strong> Every cache hit saves an LLM API call. At $0.03/1K tokens for GPT-4, a 60% hit rate on 10,000 daily requests saves ~$180/day. The Valkey lookup costs effectively nothing.</p>
+</div>
+
+<div class="nav-prev-next">
+<div></div>
+<a href="02-multiturn-caching.html" class="next"><span class="label">Next →</span><span class="title">02 — Multi-Turn Conversation Caching</span></a>
+</div>
+</article></body></html>
