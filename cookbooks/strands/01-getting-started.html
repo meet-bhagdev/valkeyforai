@@ -1,0 +1,220 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>01 — Getting Started with Strands + Valkey — Valkey for AI</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../cookbook.css">
+</head>
+<body>
+<nav class="nav"><div class="nav-inner">
+<a href="/" class="nav-logo"><img src="/valkey-logo.svg" alt="Valkey"><span class="accent">for ai</span></a>
+<div class="nav-links"><a href="/#use-cases">Use Cases</a><a href="/cookbooks/strands/">Cookbooks</a><a href="https://github.com/strands-agents/sdk-python" target="_blank">GitHub</a></div>
+</div></nav>
+
+<article>
+<div class="breadcrumb"><a href="/">Home</a> → <a href="/cookbooks/strands/">Strands</a> → 01 Getting Started</div>
+<div class="meta"><span class="diff-easy">Beginner</span><span class="lang">Python</span><span class="lang">~15 min</span></div>
+
+<h1>Getting <span class="gradient">Started</span></h1>
+<p class="lead">Implement a <code>ValkeySessionRepository</code> that plugs into Strands' official <code>SessionManager</code> interface — giving your agent persistent conversation history, session metadata, and agent state backed by Valkey.</p>
+
+<h2>How Strands Manages State</h2>
+<p>Strands has a formal session management interface. The key classes are:</p>
+<ul>
+<li><code>SessionRepository</code> — abstract base class defining the storage contract</li>
+<li><code>RepositorySessionManager</code> — the built-in session manager that delegates to any <code>SessionRepository</code></li>
+<li><code>Agent(session_manager=...)</code> — pass a session manager and Strands handles the rest</li>
+</ul>
+<p>Built-in backends are <code>FileSessionManager</code> and <code>S3SessionManager</code>. Valkey isn't bundled yet — but the <code>SessionRepository</code> ABC makes it straightforward to implement.</p>
+
+<h2>What Gets Stored</h2>
+<p>The session manager persists three types of objects to Valkey:</p>
+<table>
+<tr><th>Object</th><th>Type</th><th>Contains</th></tr>
+<tr><td>Session</td><td><code>Session</code></td><td>Session ID, creation time, metadata</td></tr>
+<tr><td>Agent state</td><td><code>SessionAgent</code></td><td>Agent ID, conversation manager state, interrupt state</td></tr>
+<tr><td>Messages</td><td><code>SessionMessage</code></td><td>Role, content, tool use/results, timestamps</td></tr>
+</table>
+
+<h2>Prerequisites</h2>
+<ul>
+<li>Docker installed</li>
+<li>Python 3.10+</li>
+<li>AWS credentials configured (Strands uses Amazon Bedrock in <code>us-west-2</code> by default)</li>
+</ul>
+
+<h2>Step 1: Start Valkey</h2>
+<pre><code>docker run -d --name valkey -p 6379:6379 valkey/valkey-bundle:latest</code></pre>
+<pre><code>docker exec valkey valkey-cli PING
+<span class="comment"># PONG</span></code></pre>
+
+<h2>Step 2: Install Dependencies</h2>
+<pre><code>pip install strands-agents strands-agents-tools
+pip install valkey</code></pre>
+
+<h2>Step 3: Implement ValkeySessionRepository</h2>
+<p>Subclass <code>SessionRepository</code> and implement its abstract methods. Each method maps to a Valkey operation:</p>
+<pre><code><span class="keyword">import</span> json
+<span class="keyword">import</span> uuid
+<span class="keyword">from</span> datetime <span class="keyword">import</span> datetime, timezone
+<span class="keyword">import</span> valkey
+
+<span class="keyword">from</span> strands.session.session_manager <span class="keyword">import</span> RepositorySessionManager
+<span class="keyword">from</span> strands.session.repository <span class="keyword">import</span> SessionRepository
+<span class="keyword">from</span> strands.types.session <span class="keyword">import</span> Session, SessionAgent, SessionMessage
+
+
+<span class="keyword">class</span> <span class="func">ValkeySessionRepository</span>(SessionRepository):
+    <span class="string">"""Valkey-backed implementation of the Strands SessionRepository interface."""</span>
+
+    <span class="keyword">def</span> <span class="func">__init__</span>(self, host: str = <span class="string">"localhost"</span>, port: int = <span class="num">6379</span>, ttl: int = <span class="num">3600</span>):
+        self.client = valkey.Valkey(host=host, port=port, decode_responses=<span class="keyword">True</span>)
+        self.ttl = ttl  <span class="comment"># seconds until session data expires</span>
+
+    <span class="comment"># ── Key helpers ──────────────────────────────────────────────────────────</span>
+    <span class="keyword">def</span> <span class="func">_session_key</span>(self, session_id: str) -> str:
+        <span class="keyword">return</span> <span class="string">f"strands:session:{session_id}"</span>
+
+    <span class="keyword">def</span> <span class="func">_agent_key</span>(self, session_id: str, agent_id: str) -> str:
+        <span class="keyword">return</span> <span class="string">f"strands:session:{session_id}:agent:{agent_id}"</span>
+
+    <span class="keyword">def</span> <span class="func">_message_key</span>(self, session_id: str, message_id: str) -> str:
+        <span class="keyword">return</span> <span class="string">f"strands:session:{session_id}:msg:{message_id}"</span>
+
+    <span class="keyword">def</span> <span class="func">_messages_list_key</span>(self, session_id: str, agent_id: str) -> str:
+        <span class="keyword">return</span> <span class="string">f"strands:session:{session_id}:agent:{agent_id}:messages"</span>
+
+    <span class="comment"># ── Session CRUD ─────────────────────────────────────────────────────────</span>
+    <span class="keyword">def</span> <span class="func">create_session</span>(self, session: Session) -> Session:
+        key = self._session_key(session.session_id)
+        self.client.set(key, json.dumps(session.model_dump()), ex=self.ttl)
+        <span class="keyword">return</span> session
+
+    <span class="keyword">def</span> <span class="func">read_session</span>(self, session_id: str) -> Session | <span class="keyword">None</span>:
+        raw = self.client.get(self._session_key(session_id))
+        <span class="keyword">if</span> raw <span class="keyword">is</span> <span class="keyword">None</span>:
+            <span class="keyword">return</span> <span class="keyword">None</span>
+        <span class="keyword">return</span> Session(**json.loads(raw))
+
+    <span class="comment"># ── Agent CRUD ───────────────────────────────────────────────────────────</span>
+    <span class="keyword">def</span> <span class="func">create_agent</span>(self, session_id: str, agent: SessionAgent) -> SessionAgent:
+        key = self._agent_key(session_id, agent.agent_id)
+        self.client.set(key, json.dumps(agent.model_dump()), ex=self.ttl)
+        <span class="keyword">return</span> agent
+
+    <span class="keyword">def</span> <span class="func">read_agent</span>(self, session_id: str, agent_id: str) -> SessionAgent | <span class="keyword">None</span>:
+        raw = self.client.get(self._agent_key(session_id, agent_id))
+        <span class="keyword">if</span> raw <span class="keyword">is</span> <span class="keyword">None</span>:
+            <span class="keyword">return</span> <span class="keyword">None</span>
+        <span class="keyword">return</span> SessionAgent(**json.loads(raw))
+
+    <span class="keyword">def</span> <span class="func">update_agent</span>(self, session_id: str, agent: SessionAgent) -> SessionAgent:
+        <span class="keyword">return</span> self.create_agent(session_id, agent)  <span class="comment"># SET overwrites</span>
+
+    <span class="comment"># ── Message CRUD ─────────────────────────────────────────────────────────</span>
+    <span class="keyword">def</span> <span class="func">create_message</span>(self, session_id: str, agent_id: str, message: SessionMessage) -> SessionMessage:
+        <span class="comment"># Store message payload</span>
+        msg_key = self._message_key(session_id, message.message_id)
+        self.client.set(msg_key, json.dumps(message.model_dump()), ex=self.ttl)
+        <span class="comment"># Append message ID to the ordered list for this agent</span>
+        list_key = self._messages_list_key(session_id, agent_id)
+        self.client.rpush(list_key, message.message_id)
+        self.client.expire(list_key, self.ttl)
+        <span class="keyword">return</span> message
+
+    <span class="keyword">def</span> <span class="func">read_message</span>(self, session_id: str, agent_id: str, message_id: str) -> SessionMessage | <span class="keyword">None</span>:
+        raw = self.client.get(self._message_key(session_id, message_id))
+        <span class="keyword">if</span> raw <span class="keyword">is</span> <span class="keyword">None</span>:
+            <span class="keyword">return</span> <span class="keyword">None</span>
+        <span class="keyword">return</span> SessionMessage(**json.loads(raw))
+
+    <span class="keyword">def</span> <span class="func">update_message</span>(self, session_id: str, agent_id: str, message: SessionMessage) -> SessionMessage:
+        <span class="keyword">return</span> self.create_message(session_id, agent_id, message)
+
+    <span class="keyword">def</span> <span class="func">list_messages</span>(self, session_id: str, agent_id: str) -> list[SessionMessage]:
+        list_key = self._messages_list_key(session_id, agent_id)
+        message_ids = self.client.lrange(list_key, <span class="num">0</span>, -<span class="num">1</span>)
+        messages = []
+        <span class="keyword">for</span> mid <span class="keyword">in</span> message_ids:
+            msg = self.read_message(session_id, agent_id, mid)
+            <span class="keyword">if</span> msg:
+                messages.append(msg)
+        <span class="keyword">return</span> messages</code></pre>
+
+<div class="callout">
+<p><strong>Design note:</strong> Messages are stored as individual Valkey strings (one key per message) with an ordered list of IDs per agent. This lets you read a single message by ID in O(1) while still replaying the full conversation in order via <code>LRANGE</code>.</p>
+</div>
+
+<h2>Step 4: Wire It to a Strands Agent</h2>
+<pre><code><span class="keyword">from</span> strands <span class="keyword">import</span> Agent
+
+<span class="comment"># Create the repository and session manager</span>
+repo = ValkeySessionRepository(host=<span class="string">"localhost"</span>, port=<span class="num">6379</span>, ttl=<span class="num">3600</span>)
+session_mgr = RepositorySessionManager(
+    session_id=<span class="string">"user-42"</span>,
+    session_repository=repo,
+)
+
+<span class="comment"># Pass the session manager to the agent</span>
+agent = Agent(
+    system_prompt=<span class="string">"You are a helpful assistant."</span>,
+    session_manager=session_mgr,
+)
+
+<span class="comment"># Strands automatically persists every turn to Valkey</span>
+response = agent(<span class="string">"My name is Alex and I'm building a RAG pipeline."</span>)
+print(response)</code></pre>
+
+<h2>Step 5: Resume a Session</h2>
+<p>Create a new <code>Agent</code> with the same <code>session_id</code> — Strands reloads the full conversation history from Valkey automatically:</p>
+<pre><code><span class="comment"># In a new Python process — history is restored from Valkey</span>
+repo = ValkeySessionRepository(host=<span class="string">"localhost"</span>, port=<span class="num">6379</span>)
+session_mgr = RepositorySessionManager(
+    session_id=<span class="string">"user-42"</span>,  <span class="comment"># same session ID</span>
+    session_repository=repo,
+)
+agent = Agent(session_manager=session_mgr)
+
+response = agent(<span class="string">"What was I just telling you about?"</span>)
+print(response)
+<span class="comment"># Agent correctly recalls: "You mentioned you're building a RAG pipeline."</span></code></pre>
+
+<h2>Step 6: Inspect What's in Valkey</h2>
+<pre><code><span class="comment"># List all keys for this session</span>
+keys = repo.client.keys(<span class="string">"strands:session:user-42:*"</span>)
+<span class="keyword">for</span> k <span class="keyword">in</span> sorted(keys):
+    ttl = repo.client.ttl(k)
+    print(<span class="string">f"{k}  (TTL: {ttl}s)"</span>)
+
+<span class="comment"># strands:session:user-42                          (TTL: 3598s)</span>
+<span class="comment"># strands:session:user-42:agent:default            (TTL: 3597s)</span>
+<span class="comment"># strands:session:user-42:agent:default:messages   (TTL: 3597s)</span>
+<span class="comment"># strands:session:user-42:msg:&lt;uuid&gt;               (TTL: 3596s)</span>
+<span class="comment"># strands:session:user-42:msg:&lt;uuid&gt;               (TTL: 3596s)</span>
+
+<span class="comment"># Read all messages for the session</span>
+messages = repo.list_messages(<span class="string">"user-42"</span>, <span class="string">"default"</span>)
+<span class="keyword">for</span> msg <span class="keyword">in</span> messages:
+    print(<span class="string">f"[{msg.role}] {str(msg.content)[:80]}"</span>)</code></pre>
+
+<h2>Valkey Keys Used</h2>
+<table>
+<tr><th>Key Pattern</th><th>Type</th><th>Contains</th></tr>
+<tr><td><code>strands:session:{id}</code></td><td>STRING</td><td>Session metadata (JSON)</td></tr>
+<tr><td><code>strands:session:{id}:agent:{agent_id}</code></td><td>STRING</td><td>Agent state (JSON)</td></tr>
+<tr><td><code>strands:session:{id}:agent:{agent_id}:messages</code></td><td>LIST</td><td>Ordered message IDs</td></tr>
+<tr><td><code>strands:session:{id}:msg:{message_id}</code></td><td>STRING</td><td>Message payload (JSON)</td></tr>
+</table>
+
+<div class="nav-prev-next">
+<div></div>
+<a href="02-session-internals.html" class="next">
+<span class="label">Next →</span>
+<span class="title">02 — Session Internals &amp; Inspection</span>
+</a>
+</div>
+</article>
+</body>
+</html>

@@ -1,0 +1,407 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Strands + Valkey Demo — Valkey for AI</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
+<style>
+*,*::before,*::after{margin:0;padding:0;box-sizing:border-box}
+:root{
+  --bg:#000;--card:rgba(255,255,255,.04);--card-h:rgba(255,255,255,.07);
+  --brd:rgba(255,255,255,.08);--t1:#f5f5f7;--t2:rgba(245,245,247,.6);
+  --t3:rgba(245,245,247,.35);--g1:#f97316;--g2:#fb923c;
+  --green:#22c55e;--radius:16px;--font:'Inter',system-ui,sans-serif
+}
+html{-webkit-font-smoothing:antialiased}
+body{font-family:var(--font);background:var(--bg);color:var(--t1);line-height:1.6;min-height:100vh}
+a{color:inherit;text-decoration:none}
+.nav{position:sticky;top:0;z-index:100;background:rgba(0,0,0,.85);backdrop-filter:blur(20px);border-bottom:1px solid var(--brd);padding:14px 32px}
+.nav-inner{max-width:1300px;margin:0 auto;display:flex;align-items:center;justify-content:space-between}
+.nav-logo{display:flex;align-items:center;gap:8px;font-weight:700;font-size:16px}
+.nav-logo img{height:22px}
+.accent{color:var(--g2)}
+.nav-links{display:flex;gap:24px;font-size:14px;color:var(--t2)}
+.nav-links a:hover{color:var(--t1)}
+
+.demo-shell{max-width:1300px;margin:0 auto;padding:32px 24px;display:grid;grid-template-columns:1fr 420px;gap:24px;align-items:start}
+@media(max-width:900px){.demo-shell{grid-template-columns:1fr}}
+
+.demo-hero{padding:40px 24px 24px;text-align:center;max-width:700px;margin:0 auto}
+.demo-hero h1{font-size:36px;font-weight:900;letter-spacing:-.03em;margin-bottom:8px}
+.demo-hero h1 span{background:linear-gradient(135deg,var(--g1),var(--g2));-webkit-background-clip:text;-webkit-text-fill-color:transparent}
+.demo-hero p{font-size:15px;color:var(--t2)}
+
+.panel{background:var(--card);border:1px solid var(--brd);border-radius:var(--radius);overflow:hidden}
+.panel-header{padding:14px 18px;border-bottom:1px solid var(--brd);display:flex;align-items:center;justify-content:space-between}
+.panel-title{font-size:13px;font-weight:700;color:var(--t2);text-transform:uppercase;letter-spacing:.06em}
+.panel-body{padding:18px}
+
+.chat-messages{min-height:320px;max-height:420px;overflow-y:auto;display:flex;flex-direction:column;gap:12px;padding:16px;scroll-behavior:smooth}
+.msg{display:flex;gap:10px;align-items:flex-start}
+.msg.user{flex-direction:row-reverse}
+.msg-avatar{width:28px;height:28px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;flex-shrink:0}
+.msg.user .msg-avatar{background:linear-gradient(135deg,var(--g1),var(--g2));color:#fff}
+.msg.agent .msg-avatar{background:rgba(255,255,255,.1);color:var(--t2)}
+.msg-bubble{max-width:80%;padding:10px 14px;border-radius:12px;font-size:14px;line-height:1.5}
+.msg.user .msg-bubble{background:linear-gradient(135deg,rgba(249,115,22,.2),rgba(251,146,60,.15));border:1px solid rgba(249,115,22,.25);color:var(--t1)}
+.msg.agent .msg-bubble{background:rgba(255,255,255,.06);border:1px solid var(--brd);color:var(--t1)}
+.msg-bubble.thinking{color:var(--t3);font-style:italic}
+
+.chat-input-row{display:flex;gap:8px;padding:12px 16px;border-top:1px solid var(--brd)}
+.chat-input{flex:1;background:rgba(255,255,255,.06);border:1px solid var(--brd);border-radius:10px;padding:10px 14px;font-size:14px;color:var(--t1);font-family:var(--font);outline:none;transition:.2s}
+.chat-input:focus{border-color:var(--g1);background:rgba(255,255,255,.08)}
+.chat-input::placeholder{color:var(--t3)}
+.send-btn{padding:10px 18px;border-radius:10px;background:linear-gradient(135deg,var(--g1),var(--g2));color:#fff;font-size:13px;font-weight:700;border:none;cursor:pointer;transition:.2s;white-space:nowrap}
+.send-btn:hover{opacity:.85}
+.send-btn:disabled{opacity:.4;cursor:not-allowed}
+
+.session-bar{display:flex;align-items:center;gap:8px;padding:10px 16px;border-bottom:1px solid var(--brd);font-size:12px;color:var(--t3)}
+.session-dot{width:7px;height:7px;border-radius:50%;background:var(--green);box-shadow:0 0 6px var(--green)}
+.session-id{font-family:'SF Mono','Fira Code',monospace;color:var(--t2)}
+.session-count{margin-left:auto;color:var(--t3)}
+
+.quick-prompts{display:flex;flex-wrap:wrap;gap:6px;padding:10px 16px;border-bottom:1px solid var(--brd)}
+.qp{padding:5px 12px;border-radius:100px;font-size:12px;border:1px solid var(--brd);color:var(--t2);cursor:pointer;transition:.2s;background:transparent}
+.qp:hover{border-color:var(--g1);color:var(--g1)}
+
+.right-col{display:flex;flex-direction:column;gap:16px}
+
+.metrics-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;padding:14px}
+.metric{background:rgba(255,255,255,.03);border:1px solid var(--brd);border-radius:10px;padding:12px}
+.metric-val{font-size:22px;font-weight:900;letter-spacing:-.03em}
+.metric-val.orange{color:var(--g1)}
+.metric-val.green{color:var(--green)}
+.metric-val.blue{color:#60a5fa}
+.metric-val.purple{color:#a78bfa}
+.metric-label{font-size:11px;color:var(--t3);margin-top:2px}
+
+/* session objects panel */
+.obj-list{display:flex;flex-direction:column;gap:6px;padding:14px;max-height:200px;overflow-y:auto}
+.obj-item{font-size:12px;padding:8px 10px;background:rgba(255,255,255,.03);border-radius:8px;border:1px solid var(--brd);font-family:'SF Mono','Fira Code',monospace;line-height:1.6}
+.obj-type{color:var(--g1);font-weight:700}
+.obj-key{color:var(--green)}
+.obj-val{color:var(--t2)}
+.obj-empty{font-size:13px;color:var(--t3);text-align:center;padding:20px}
+
+/* query log */
+.log-body{padding:12px 14px;max-height:280px;overflow-y:auto;display:flex;flex-direction:column;gap:4px}
+.log-line{font-family:'SF Mono','Fira Code',monospace;font-size:11px;line-height:1.6;color:var(--t3)}
+.log-line .strands{color:var(--g1);font-weight:700}
+.log-line .valkey{color:var(--green);font-weight:700}
+.log-line .key{color:rgba(245,245,247,.55)}
+.log-line .comment{color:rgba(245,245,247,.22);font-style:italic}
+.log-divider{border:none;border-top:1px solid var(--brd);margin:4px 0}
+
+/* valkey store viz */
+.store-viz{padding:14px;font-family:'SF Mono','Fira Code',monospace;font-size:11px;line-height:1.9;color:var(--t2);max-height:160px;overflow-y:auto}
+.store-key{color:var(--g1)}
+.store-type{color:var(--t3);font-size:10px}
+.store-ttl{color:#60a5fa;font-size:10px}
+</style>
+</head>
+<body>
+<nav class="nav">
+<div class="nav-inner">
+<a href="/" class="nav-logo"><img src="/valkey-logo.svg" alt="Valkey"><span class="accent">for ai</span></a>
+<div class="nav-links">
+<a href="/cookbooks/strands/">Strands Cookbooks</a>
+<a href="/#frameworks">Frameworks</a>
+</div>
+</div>
+</nav>
+
+<div class="demo-hero">
+<h1>Strands Agents + <span>Valkey</span></h1>
+<p>Valkey as the <code>SessionRepository</code> backend — persisting conversation history, session metadata, and agent state via the official Strands session manager interface.</p>
+</div>
+
+<div class="demo-shell">
+<!-- LEFT: Chat -->
+<div class="panel">
+<div class="panel-header">
+<span class="panel-title">Strands Agent</span>
+<span style="font-size:11px;color:var(--t3)">RepositorySessionManager → ValkeySessionRepository</span>
+</div>
+<div class="session-bar">
+<div class="session-dot"></div>
+<span>Session:</span>
+<span class="session-id" id="sessionId">user-demo-001</span>
+<span class="session-count" id="turnCount">0 messages in Valkey</span>
+</div>
+<div class="quick-prompts">
+<button class="qp" onclick="sendQuick(this)">My name is Alex, I'm building a RAG pipeline</button>
+<button class="qp" onclick="sendQuick(this)">What was I just telling you about?</button>
+<button class="qp" onclick="sendQuick(this)">What is retrieval-augmented generation?</button>
+<button class="qp" onclick="sendQuick(this)">How does Valkey store my session?</button>
+<button class="qp" onclick="sendQuick(this)">What's the best embedding model for semantic search?</button>
+</div>
+<div class="chat-messages" id="chatMessages"></div>
+<div class="chat-input-row">
+<input class="chat-input" id="chatInput" placeholder="Ask the agent anything…" onkeydown="if(event.key==='Enter')sendMessage()">
+<button class="send-btn" id="sendBtn" onclick="sendMessage()">Send</button>
+</div>
+</div>
+
+<!-- RIGHT -->
+<div class="right-col">
+
+<div class="panel">
+<div class="panel-header"><span class="panel-title">Session Metrics</span></div>
+<div class="metrics-grid">
+<div class="metric"><div class="metric-val orange" id="mMessages">0</div><div class="metric-label">Messages Stored</div></div>
+<div class="metric"><div class="metric-val green" id="mTurns">0</div><div class="metric-label">Turns</div></div>
+<div class="metric"><div class="metric-val blue" id="mKeys">0</div><div class="metric-label">Valkey Keys</div></div>
+<div class="metric"><div class="metric-val purple" id="mAgents">1</div><div class="metric-label">Agents</div></div>
+</div>
+</div>
+
+<div class="panel">
+<div class="panel-header">
+<span class="panel-title">Session Objects in Valkey</span>
+</div>
+<div class="obj-list" id="objList">
+<div class="obj-empty">No session data yet. Send a message.</div>
+</div>
+</div>
+
+<div class="panel">
+<div class="panel-header">
+<span class="panel-title">Valkey Keys</span>
+<span style="font-size:11px;color:var(--t3)">live store</span>
+</div>
+<div class="store-viz" id="storeViz">
+<span style="color:var(--t3);font-size:12px">Waiting for first message…</span>
+</div>
+</div>
+
+<div class="panel">
+<div class="panel-header"><span class="panel-title">Strands API Log</span></div>
+<div class="log-body" id="logBody">
+<div class="log-line"><span class="comment"># Strands session manager calls appear here</span></div>
+</div>
+</div>
+
+</div>
+</div>
+
+<script>
+// ── State ──────────────────────────────────────────────────────────────────
+const SESSION_ID = 'user-demo-001';
+const AGENT_ID = 'default';
+let messageCount = 0;
+let turns = 0;
+// Simulated Valkey store: key → {type, value, ttl}
+const valkeyStore = {};
+// Simulated session objects
+let sessionObj = null;
+let agentObj = null;
+const messages = []; // SessionMessage[]
+
+// ── Simulated message IDs ─────────────────────────────────────────────────
+function uuid() {
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, c => {
+    const r = Math.random()*16|0;
+    return (c==='x'?r:(r&0x3|0x8)).toString(16);
+  });
+}
+
+// ── Agent responses ────────────────────────────────────────────────────────
+const RESPONSES = {
+  default: [
+    "That's a great question. Based on our conversation history, I can give you a more tailored answer. Valkey's sub-millisecond reads make it ideal for session-backed agents like this one.",
+    "Good point. Since my session state is persisted in Valkey via the RepositorySessionManager, I can pick up exactly where we left off — even across restarts.",
+    "Interesting. I've stored this exchange as a SessionMessage in Valkey. You can inspect it directly using the session repository's list_messages() method.",
+    "That's exactly the kind of use case the Strands session manager is designed for. Each turn is a SessionMessage object stored under your session ID.",
+  ],
+  rag: "Retrieval-Augmented Generation (RAG) is a technique that combines a retrieval system with a generative LLM. Instead of relying solely on the model's training data, RAG first retrieves relevant documents from a knowledge base — like a Valkey vector store — then passes them as context to the LLM. This grounds the response in real, up-to-date information and reduces hallucinations.",
+  embedding: "For semantic search, `sentence-transformers/all-mpnet-base-v2` is a solid choice — 768 dimensions, strong performance on asymmetric search tasks, and it runs locally without an API key.",
+  sessionStorage: "Your session is stored in Valkey as three types of objects: a Session (metadata), a SessionAgent (agent state including conversation manager state and interrupt state), and individual SessionMessage objects for each turn. The RepositorySessionManager handles all reads and writes automatically — you just pass it to Agent(session_manager=...).",
+  recall: (turns) => turns > 0
+    ? `Based on our conversation history (${turns} turns stored in Valkey), I can see we've been discussing your RAG pipeline project. The RepositorySessionManager loaded all ${turns*2} messages from Valkey when this agent was initialized.`
+    : "I don't have any prior conversation history for this session yet.",
+  intro: (name, project) => `Nice to meet you${name ? `, ${name}` : ''}! I've stored this exchange as a SessionMessage in Valkey. ${project ? `I'll keep your work on "${project}" in context for the rest of our session.` : ''} My session state is persisted via ValkeySessionRepository — so I'll remember this even if the process restarts.`,
+};
+
+function getResponse(msg) {
+  const lower = msg.toLowerCase();
+  if (lower.includes('rag') || lower.includes('retrieval-augmented') || lower.includes('retrieval augmented')) return RESPONSES.rag;
+  if (lower.includes('embedding') || lower.includes('embed')) return RESPONSES.embedding;
+  if (lower.includes('how does valkey store') || lower.includes('session') && lower.includes('store')) return RESPONSES.sessionStorage;
+  if (lower.includes('what was') || lower.includes('remember') || lower.includes('telling you') || lower.includes('recall')) return RESPONSES.recall(turns);
+  if (lower.includes('my name is') || lower.includes("i'm building") || lower.includes("i am building")) {
+    const nameMatch = msg.match(/my name is (\w+)/i);
+    const projMatch = msg.match(/building (?:a |an )?(.+?)(?:\.|$)/i);
+    return RESPONSES.intro(nameMatch?.[1], projMatch?.[1]);
+  }
+  return RESPONSES.default[Math.floor(Math.random() * RESPONSES.default.length)];
+}
+
+// ── Simulated Valkey operations ────────────────────────────────────────────
+function valkeySet(key, value, ttl=3600) {
+  valkeyStore[key] = {type:'STRING', value, ttl};
+}
+function valkeyRpush(key, val, ttl=3600) {
+  if (!valkeyStore[key]) valkeyStore[key] = {type:'LIST', value:[], ttl};
+  valkeyStore[key].value.push(val);
+  valkeyStore[key].ttl = ttl;
+}
+
+function initSession() {
+  const now = new Date().toISOString();
+  sessionObj = {session_id: SESSION_ID, created_at: now, updated_at: now, metadata: {}};
+  agentObj = {agent_id: AGENT_ID, session_id: SESSION_ID, conversation_manager_state: {message_count: 0}, interrupt_state: null};
+  valkeySet(`strands:session:${SESSION_ID}`, JSON.stringify(sessionObj));
+  valkeySet(`strands:session:${SESSION_ID}:agent:${AGENT_ID}`, JSON.stringify(agentObj));
+}
+
+function storeMessage(role, content) {
+  const msgId = uuid();
+  const now = new Date().toISOString();
+  const msg = {message_id: msgId, role, content: [{text: content}], created_at: now};
+  messages.push(msg);
+  valkeySet(`strands:session:${SESSION_ID}:msg:${msgId}`, JSON.stringify(msg));
+  valkeyRpush(`strands:session:${SESSION_ID}:agent:${AGENT_ID}:messages`, msgId);
+  messageCount++;
+  // update agent state
+  agentObj.conversation_manager_state.message_count = messageCount;
+  valkeySet(`strands:session:${SESSION_ID}:agent:${AGENT_ID}`, JSON.stringify(agentObj));
+  return msgId;
+}
+
+// ── UI helpers ─────────────────────────────────────────────────────────────
+function addMsg(role, text) {
+  const container = document.getElementById('chatMessages');
+  const div = document.createElement('div');
+  div.className = `msg ${role}`;
+  div.innerHTML = `
+    <div class="msg-avatar">${role==='user'?'U':'🤖'}</div>
+    <div class="msg-bubble">${text.replace(/\n/g,'<br>')}</div>`;
+  container.appendChild(div);
+  container.scrollTop = container.scrollHeight;
+}
+
+function addThinking() {
+  const container = document.getElementById('chatMessages');
+  const div = document.createElement('div');
+  div.className = 'msg agent'; div.id = 'thinkingMsg';
+  div.innerHTML = `<div class="msg-avatar">🤖</div><div class="msg-bubble thinking">Agent is thinking…</div>`;
+  container.appendChild(div);
+  container.scrollTop = container.scrollHeight;
+}
+function removeThinking() { const el=document.getElementById('thinkingMsg'); if(el)el.remove(); }
+
+function log(html) {
+  const body = document.getElementById('logBody');
+  const line = document.createElement('div');
+  line.className = 'log-line'; line.innerHTML = html;
+  body.appendChild(line);
+  body.scrollTop = body.scrollHeight;
+}
+function logDivider() {
+  const body = document.getElementById('logBody');
+  const hr = document.createElement('hr'); hr.className = 'log-divider';
+  body.appendChild(hr);
+}
+
+function updateMetrics() {
+  document.getElementById('mMessages').textContent = messageCount;
+  document.getElementById('mTurns').textContent = turns;
+  document.getElementById('mKeys').textContent = Object.keys(valkeyStore).length;
+  document.getElementById('turnCount').textContent = `${messageCount} messages in Valkey`;
+}
+
+function updateObjList() {
+  const list = document.getElementById('objList');
+  if (!sessionObj) { list.innerHTML = '<div class="obj-empty">No session data yet. Send a message.</div>'; return; }
+  const items = [];
+  items.push(`<div class="obj-item"><span class="obj-type">Session</span>  <span class="obj-key">session_id</span>=<span class="obj-val">"${SESSION_ID}"</span>  <span class="obj-key">updated_at</span>=<span class="obj-val">"${new Date().toISOString().slice(0,19)}Z"</span></div>`);
+  items.push(`<div class="obj-item"><span class="obj-type">SessionAgent</span>  <span class="obj-key">agent_id</span>=<span class="obj-val">"${AGENT_ID}"</span>  <span class="obj-key">message_count</span>=<span class="obj-val">${messageCount}</span></div>`);
+  const recent = messages.slice(-2);
+  for (const m of recent) {
+    const preview = m.content[0]?.text?.slice(0,45) || '';
+    items.push(`<div class="obj-item"><span class="obj-type">SessionMessage</span>  <span class="obj-key">role</span>=<span class="obj-val">"${m.role}"</span>  <span class="obj-key">content</span>=<span class="obj-val">"${preview}…"</span></div>`);
+  }
+  list.innerHTML = items.join('');
+}
+
+function updateStoreViz() {
+  const viz = document.getElementById('storeViz');
+  const lines = Object.entries(valkeyStore).map(([k, v]) => {
+    const typeLabel = v.type === 'LIST' ? `LIST[${v.value.length}]` : 'STRING';
+    return `<span class="store-key">${k}</span>  <span class="store-type">${typeLabel}</span>  <span class="store-ttl">TTL ${v.ttl}s</span>`;
+  });
+  viz.innerHTML = lines.join('<br>') || '<span style="color:var(--t3)">No keys yet</span>';
+}
+
+// ── Main send ──────────────────────────────────────────────────────────────
+async function sendMessage() {
+  const input = document.getElementById('chatInput');
+  const msg = input.value.trim();
+  if (!msg) return;
+  input.value = '';
+  document.getElementById('sendBtn').disabled = true;
+
+  addMsg('user', msg);
+  logDivider();
+
+  // Init session on first message
+  if (!sessionObj) {
+    initSession();
+    log(`<span class="strands">RepositorySessionManager</span>(session_id=<span class="key">"${SESSION_ID}"</span>, session_repository=ValkeySessionRepository(...))`);
+    log(`<span class="valkey">SET</span> <span class="key">strands:session:${SESSION_ID}</span>  <span class="comment"># Session object</span>`);
+    log(`<span class="valkey">SET</span> <span class="key">strands:session:${SESSION_ID}:agent:${AGENT_ID}</span>  <span class="comment"># SessionAgent</span>`);
+    await sleep(150);
+  }
+
+  // Load existing messages
+  log(`<span class="strands">session_mgr.list_messages</span>(<span class="key">"${SESSION_ID}"</span>, <span class="key">"${AGENT_ID}"</span>)`);
+  log(`<span class="valkey">LRANGE</span> <span class="key">strands:session:${SESSION_ID}:agent:${AGENT_ID}:messages</span> 0 -1  <span class="comment"># ${messageCount} msgs</span>`);
+  await sleep(180);
+
+  // Store user message
+  const userMsgId = storeMessage('user', msg);
+  log(`<span class="strands">session_mgr.create_message</span>(role=<span class="key">"user"</span>, ...)`);
+  log(`<span class="valkey">SET</span> <span class="key">strands:session:${SESSION_ID}:msg:${userMsgId.slice(0,8)}…</span>  <span class="comment"># SessionMessage</span>`);
+  log(`<span class="valkey">RPUSH</span> <span class="key">strands:session:${SESSION_ID}:agent:${AGENT_ID}:messages</span> ${userMsgId.slice(0,8)}…`);
+
+  log(`<span class="strands">Agent</span>(session_manager=session_mgr)(<span class="key">"${msg.slice(0,40)}${msg.length>40?'…':''}"</span>)`);
+  log(`<span class="comment"># → Bedrock: us.anthropic.claude-sonnet-4-20250514-v1:0</span>`);
+
+  addThinking();
+  await sleep(1100);
+  removeThinking();
+
+  const answer = getResponse(msg);
+  turns++;
+
+  // Store assistant message
+  const asstMsgId = storeMessage('assistant', answer);
+  log(`<span class="strands">session_mgr.create_message</span>(role=<span class="key">"assistant"</span>, ...)`);
+  log(`<span class="valkey">SET</span> <span class="key">strands:session:${SESSION_ID}:msg:${asstMsgId.slice(0,8)}…</span>  <span class="comment"># SessionMessage</span>`);
+  log(`<span class="valkey">RPUSH</span> <span class="key">strands:session:${SESSION_ID}:agent:${AGENT_ID}:messages</span> ${asstMsgId.slice(0,8)}…`);
+  log(`<span class="valkey">SET</span> <span class="key">strands:session:${SESSION_ID}:agent:${AGENT_ID}</span>  <span class="comment"># update SessionAgent state</span>`);
+
+  addMsg('agent', answer);
+  updateMetrics();
+  updateObjList();
+  updateStoreViz();
+  document.getElementById('sendBtn').disabled = false;
+  document.getElementById('chatInput').focus();
+}
+
+function sendQuick(btn) {
+  document.getElementById('chatInput').value = btn.textContent.trim();
+  sendMessage();
+}
+function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
+
+window.addEventListener('load', () => {
+  log(`<span class="comment"># Strands + Valkey session manager demo</span>`);
+  log(`<span class="strands">ValkeySessionRepository</span>(host=<span class="key">"localhost"</span>, port=<span class="key">6379</span>, ttl=<span class="key">3600</span>)`);
+  log(`<span class="comment"># Session will be created on first message</span>`);
+  document.getElementById('chatInput').focus();
+});
+</script>
+</body>
+</html>

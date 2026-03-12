@@ -1,0 +1,194 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>03 — Production &amp; ElastiCache — Strands — Valkey for AI</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../cookbook.css">
+</head>
+<body>
+<nav class="nav"><div class="nav-inner">
+<a href="/" class="nav-logo"><img src="/valkey-logo.svg" alt="Valkey"><span class="accent">for ai</span></a>
+<div class="nav-links"><a href="/#use-cases">Use Cases</a><a href="/cookbooks/strands/">Cookbooks</a><a href="https://github.com/strands-agents/sdk-python" target="_blank">GitHub</a></div>
+</div></nav>
+
+<article>
+<div class="breadcrumb"><a href="/">Home</a> → <a href="/cookbooks/strands/">Strands</a> → 03 Production &amp; ElastiCache</div>
+<div class="meta"><span class="diff-hard">Advanced</span><span class="lang">Python</span><span class="lang">~20 min</span></div>
+
+<h1>Production &amp; <span class="gradient">ElastiCache</span></h1>
+<p class="lead">Deploy the Valkey session backend to Amazon ElastiCache, configure connection pooling and TLS, and apply production-ready TTL and eviction strategies for multi-tenant agent workloads.</p>
+
+<h2>Prerequisites</h2>
+<ul>
+<li>Completed Cookbooks 01 and 02</li>
+<li>An ElastiCache for Valkey cluster (or use the local Docker setup for testing)</li>
+<li>AWS credentials configured</li>
+</ul>
+
+<h2>Connecting to ElastiCache</h2>
+<p>The only change from local development is the connection parameters. The <code>ValkeySessionRepository</code> from Cookbook 01 works unchanged:</p>
+<pre><code><span class="keyword">import</span> ssl
+<span class="keyword">import</span> valkey
+
+<span class="comment"># ElastiCache for Valkey endpoint (cluster mode disabled)</span>
+ELASTICACHE_HOST = <span class="string">"master.my-valkey-cluster.abc123.use1.cache.amazonaws.com"</span>
+ELASTICACHE_PORT = <span class="num">6379</span>
+
+<span class="comment"># Production client with TLS and connection pooling</span>
+client = valkey.Valkey(
+    host=ELASTICACHE_HOST,
+    port=ELASTICACHE_PORT,
+    ssl=<span class="keyword">True</span>,
+    ssl_cert_reqs=<span class="string">"none"</span>,  <span class="comment"># ElastiCache uses AWS-managed certs</span>
+    decode_responses=<span class="keyword">True</span>,
+    socket_connect_timeout=<span class="num">5</span>,
+    socket_timeout=<span class="num">5</span>,
+    retry_on_timeout=<span class="keyword">True</span>,
+    health_check_interval=<span class="num">30</span>,
+)
+
+<span class="comment"># Drop-in: pass this client to ValkeySessionRepository</span>
+<span class="keyword">class</span> <span class="func">ValkeySessionRepository</span>(SessionRepository):
+    <span class="keyword">def</span> <span class="func">__init__</span>(self, client: valkey.Valkey, ttl: int = <span class="num">3600</span>):
+        self.client = client
+        self.ttl = ttl
+    <span class="comment"># ... same implementation as Cookbook 01</span></code></pre>
+
+<div class="callout">
+<p><strong>VPC access:</strong> ElastiCache clusters are not publicly accessible. Your Lambda function, ECS task, or EC2 instance must be in the same VPC and security group as the cluster. For local development, use an SSM port-forwarding tunnel.</p>
+</div>
+
+<h2>SSM Tunnel for Local Development</h2>
+<p>To connect to ElastiCache from your laptop during development:</p>
+<pre><code><span class="comment"># Start the tunnel (requires a jump host EC2 instance in the same VPC)</span>
+aws ssm start-session \
+  --target i-0594295b8314b037f \
+  --document-name AWS-StartPortForwardingSessionToRemoteHost \
+  --parameters '{
+    "host":["master.my-valkey-cluster.abc123.use1.cache.amazonaws.com"],
+    "portNumber":["6379"],
+    "localPortNumber":["6379"]
+  }' \
+  --profile default \
+  --region us-east-1</code></pre>
+<p>Then connect to <code>localhost:6379</code> as normal — the tunnel forwards to ElastiCache.</p>
+
+<h2>TTL Strategy for Multi-Tenant Workloads</h2>
+<p>Different session types warrant different TTLs. Encode this in the repository constructor:</p>
+<pre><code>SESSION_TTLS = {
+    <span class="string">"interactive"</span>: <span class="num">3600</span>,      <span class="comment"># 1h — active chat sessions</span>
+    <span class="string">"background"</span>: <span class="num">86400</span>,     <span class="comment"># 24h — async agent workflows</span>
+    <span class="string">"persistent"</span>: <span class="num">2592000</span>,   <span class="comment"># 30d — long-lived user profiles</span>
+}
+
+<span class="keyword">def</span> <span class="func">get_session_manager</span>(
+    session_id: str,
+    session_type: str = <span class="string">"interactive"</span>,
+    agent_id: str = <span class="string">"default"</span>,
+) -> RepositorySessionManager:
+    ttl = SESSION_TTLS.get(session_type, <span class="num">3600</span>)
+    repo = ValkeySessionRepository(client=client, ttl=ttl)
+    <span class="keyword">return</span> RepositorySessionManager(
+        session_id=session_id,
+        agent_id=agent_id,
+        session_repository=repo,
+    )
+
+<span class="comment"># Interactive chat agent</span>
+chat_agent = Agent(
+    system_prompt=<span class="string">"You are a helpful assistant."</span>,
+    session_manager=get_session_manager(<span class="string">"user-42"</span>, <span class="string">"interactive"</span>),
+)
+
+<span class="comment"># Long-running background workflow</span>
+workflow_agent = Agent(
+    system_prompt=<span class="string">"You are a document processing agent."</span>,
+    session_manager=get_session_manager(<span class="string">"job-8f3a"</span>, <span class="string">"background"</span>),
+)</code></pre>
+
+<h2>Sliding Expiry on Activity</h2>
+<p>Reset TTLs on every agent invocation so active sessions don't expire mid-conversation:</p>
+<pre><code><span class="keyword">def</span> <span class="func">chat</span>(session_id: str, message: str) -> str:
+    repo = ValkeySessionRepository(client=client, ttl=<span class="num">3600</span>)
+    session_mgr = RepositorySessionManager(
+        session_id=session_id,
+        session_repository=repo,
+    )
+    agent = Agent(session_manager=session_mgr)
+    response = str(agent(message))
+
+    <span class="comment"># Slide the TTL forward on every interaction</span>
+    <span class="keyword">for</span> key <span class="keyword">in</span> repo.client.keys(<span class="string">f"strands:session:{session_id}*"</span>):
+        repo.client.expire(key, <span class="num">3600</span>)
+
+    <span class="keyword">return</span> response</code></pre>
+
+<h2>Eviction Policy</h2>
+<p>Configure ElastiCache to use <code>allkeys-lru</code> so the least-recently-used sessions are evicted first when memory is full — rather than throwing errors:</p>
+<pre><code><span class="comment"># Set via AWS CLI (one-time cluster configuration)</span>
+aws elasticache modify-replication-group \
+  --replication-group-id my-valkey-cluster \
+  --cache-parameter-group-name valkey7-allkeys-lru \
+  --apply-immediately \
+  --profile default \
+  --region us-east-1</code></pre>
+
+<h2>Lambda Deployment Pattern</h2>
+<p>For serverless deployments, initialize the Valkey client outside the handler to reuse connections across warm invocations:</p>
+<pre><code><span class="keyword">import</span> valkey
+<span class="keyword">from</span> strands <span class="keyword">import</span> Agent
+<span class="keyword">from</span> strands.session.session_manager <span class="keyword">import</span> RepositorySessionManager
+
+<span class="comment"># Module-level — reused across Lambda invocations</span>
+_client = valkey.Valkey(
+    host=os.environ[<span class="string">"ELASTICACHE_HOST"</span>],
+    port=<span class="num">6379</span>,
+    ssl=<span class="keyword">True</span>,
+    ssl_cert_reqs=<span class="string">"none"</span>,
+    decode_responses=<span class="keyword">True</span>,
+    socket_connect_timeout=<span class="num">3</span>,
+    socket_timeout=<span class="num">3</span>,
+)
+
+<span class="keyword">def</span> <span class="func">handler</span>(event, context):
+    session_id = event[<span class="string">"session_id"</span>]
+    message = event[<span class="string">"message"</span>]
+
+    repo = ValkeySessionRepository(client=_client, ttl=<span class="num">3600</span>)
+    session_mgr = RepositorySessionManager(
+        session_id=session_id,
+        session_repository=repo,
+    )
+    agent = Agent(session_manager=session_mgr)
+    response = str(agent(message))
+
+    <span class="keyword">return</span> {<span class="string">"statusCode"</span>: <span class="num">200</span>, <span class="string">"body"</span>: response}</code></pre>
+
+<h2>Monitoring Session Health</h2>
+<pre><code><span class="keyword">def</span> <span class="func">session_health</span>(repo: ValkeySessionRepository) -> dict:
+    <span class="string">"""Quick health check — count active sessions and total message keys."""</span>
+    all_keys = repo.client.keys(<span class="string">"strands:session:*"</span>)
+    session_keys = [k <span class="keyword">for</span> k <span class="keyword">in</span> all_keys <span class="keyword">if</span> k.count(<span class="string">":"</span>) == <span class="num">2</span>]
+    msg_keys = [k <span class="keyword">for</span> k <span class="keyword">in</span> all_keys <span class="keyword">if</span> <span class="string">":msg:"</span> <span class="keyword">in</span> k]
+    <span class="keyword">return</span> {
+        <span class="string">"active_sessions"</span>: len(session_keys),
+        <span class="string">"total_messages"</span>: len(msg_keys),
+        <span class="string">"total_keys"</span>: len(all_keys),
+        <span class="string">"valkey_ping"</span>: repo.client.ping(),
+    }
+
+print(session_health(repo))
+<span class="comment"># {'active_sessions': 42, 'total_messages': 318, 'total_keys': 445, 'valkey_ping': True}</span></code></pre>
+
+<div class="nav-prev-next">
+<a href="02-session-internals.html" class="prev">
+<span class="label">← Previous</span>
+<span class="title">02 — Session Internals &amp; Inspection</span>
+</a>
+<div></div>
+</div>
+</article>
+</body>
+</html>
