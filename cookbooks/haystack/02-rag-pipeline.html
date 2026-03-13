@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>02 — RAG Pipeline with Haystack + Valkey — Valkey for AI</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../cookbook.css">
+</head>
+<body>
+<nav class="nav"><div class="nav-inner">
+<a href="/" class="nav-logo"><img src="/valkey-logo.svg" alt="Valkey"><span class="accent">for ai</span></a>
+<div class="nav-links"><a href="/#use-cases">Use Cases</a><a href="/cookbooks/haystack/">Cookbooks</a><a href="https://github.com/meet-bhagdev/valkeyforai/tree/main" target="_blank">GitHub</a></div>
+</div></nav>
+
+<article>
+<div class="breadcrumb"><a href="/">Home</a> → <a href="/cookbooks/haystack/">Haystack</a> → 02 RAG Pipeline</div>
+<div class="meta"><span class="diff-mid">Intermediate</span><span class="lang">Python</span><span class="lang">~20 min</span></div>
+
+<h1>RAG <span class="gradient">Pipeline</span></h1>
+<p class="lead">Build a full retrieval-augmented generation pipeline with Valkey as the vector store. Embed your documents once, then answer questions grounded in your data — not the LLM's training set.</p>
+
+<h2>How RAG Works</h2>
+<pre><code>User question
+  → embed question
+  → find similar docs in Valkey (KNN)
+  → inject docs into prompt
+  → LLM generates grounded answer</code></pre>
+
+<p>Valkey handles the retrieval step — sub-millisecond KNN over your document embeddings.</p>
+
+<h2>Step 1: Indexing Pipeline</h2>
+<p>Run this once to embed and store your documents:</p>
+<pre><code><span class="keyword">from</span> haystack <span class="keyword">import</span> Pipeline, Document
+<span class="keyword">from</span> haystack.components.embedders <span class="keyword">import</span> SentenceTransformersDocumentEmbedder
+<span class="keyword">from</span> haystack.components.writers <span class="keyword">import</span> DocumentWriter
+<span class="keyword">from</span> haystack_integrations.document_stores.valkey <span class="keyword">import</span> ValkeyDocumentStore
+
+document_store = ValkeyDocumentStore(
+    nodes_list=[(<span class="string">"localhost"</span>, <span class="num">6379</span>)],
+    index_name=<span class="string">"rag_docs"</span>,
+    embedding_dim=<span class="num">768</span>,
+    distance_metric=<span class="string">"cosine"</span>,
+)
+
+indexing_pipeline = Pipeline()
+indexing_pipeline.add_component(
+    <span class="string">"embedder"</span>,
+    SentenceTransformersDocumentEmbedder(model=<span class="string">"sentence-transformers/all-mpnet-base-v2"</span>)
+)
+indexing_pipeline.add_component(<span class="string">"writer"</span>, DocumentWriter(document_store=document_store))
+indexing_pipeline.connect(<span class="string">"embedder.documents"</span>, <span class="string">"writer.documents"</span>)
+
+<span class="comment"># Your documents — swap this for file loaders, web crawlers, etc.</span>
+docs = [
+    Document(content=<span class="string">"Valkey supports vector search natively via its module system."</span>),
+    Document(content=<span class="string">"The ValkeyDocumentStore integrates directly with Haystack pipelines."</span>),
+    Document(content=<span class="string">"Cosine similarity measures the angle between two embedding vectors."</span>),
+    Document(content=<span class="string">"RAG grounds LLM responses in retrieved facts, reducing hallucinations."</span>),
+    Document(content=<span class="string">"Haystack pipelines are composable — swap any component without rewriting the rest."</span>),
+]
+
+indexing_pipeline.run({<span class="string">"embedder"</span>: {<span class="string">"documents"</span>: docs}})
+<span class="func">print</span>(<span class="string">f"Indexed {document_store.count_documents()} documents"</span>)</code></pre>
+
+<h2>Step 2: Query Pipeline</h2>
+<p>Wire together embedding → retrieval → prompt → LLM:</p>
+<pre><code><span class="keyword">from</span> haystack <span class="keyword">import</span> Pipeline
+<span class="keyword">from</span> haystack.utils <span class="keyword">import</span> Secret
+<span class="keyword">from</span> haystack.dataclasses <span class="keyword">import</span> ChatMessage
+<span class="keyword">from</span> haystack.components.embedders <span class="keyword">import</span> SentenceTransformersTextEmbedder
+<span class="keyword">from</span> haystack.components.builders <span class="keyword">import</span> ChatPromptBuilder
+<span class="keyword">from</span> haystack.components.generators.chat <span class="keyword">import</span> OpenAIChatGenerator
+<span class="keyword">from</span> haystack_integrations.components.retrievers.valkey <span class="keyword">import</span> ValkeyEmbeddingRetriever
+
+prompt_template = [
+    ChatMessage.from_system(
+        <span class="string">"Answer the question using only the provided context. "</span>
+        <span class="string">"If the context doesn't contain the answer, say 'I don't know'."</span>
+    ),
+    ChatMessage.from_user(
+        <span class="string">"Context:\n{% for doc in documents %}{{ doc.content }}\n{% endfor %}\n"</span>
+        <span class="string">"Question: {{query}}"</span>
+    ),
+]
+
+query_pipeline = Pipeline()
+query_pipeline.add_component(
+    <span class="string">"text_embedder"</span>,
+    SentenceTransformersTextEmbedder(model=<span class="string">"sentence-transformers/all-mpnet-base-v2"</span>)
+)
+query_pipeline.add_component(
+    <span class="string">"retriever"</span>,
+    ValkeyEmbeddingRetriever(document_store=document_store, top_k=<span class="num">3</span>)
+)
+query_pipeline.add_component(
+    <span class="string">"prompt_builder"</span>,
+    ChatPromptBuilder(template=prompt_template, required_variables=[<span class="string">"query"</span>, <span class="string">"documents"</span>])
+)
+query_pipeline.add_component(
+    <span class="string">"generator"</span>,
+    OpenAIChatGenerator(
+        api_key=Secret.from_env_var(<span class="string">"OPENAI_API_KEY"</span>),
+        model=<span class="string">"gpt-4o"</span>
+    )
+)
+
+query_pipeline.connect(<span class="string">"text_embedder.embedding"</span>, <span class="string">"retriever.query_embedding"</span>)
+query_pipeline.connect(<span class="string">"retriever.documents"</span>, <span class="string">"prompt_builder.documents"</span>)
+query_pipeline.connect(<span class="string">"prompt_builder.messages"</span>, <span class="string">"generator.messages"</span>)</code></pre>
+
+<h2>Step 3: Ask a Question</h2>
+<pre><code>query = <span class="string">"How does Valkey integrate with Haystack?"</span>
+
+result = query_pipeline.run({
+    <span class="string">"text_embedder"</span>: {<span class="string">"text"</span>: query},
+    <span class="string">"prompt_builder"</span>: {<span class="string">"query"</span>: query},
+})
+
+<span class="func">print</span>(result[<span class="string">"generator"</span>][<span class="string">"replies"</span>][<span class="num">0</span>].content)</code></pre>
+
+<p>Output:</p>
+<pre><code>The ValkeyDocumentStore integrates directly with Haystack pipelines,
+allowing you to store document embeddings in Valkey and retrieve them
+using the ValkeyEmbeddingRetriever component.</code></pre>
+
+<h2>Pipeline Architecture</h2>
+<div class="callout">
+<p><strong>Key Insight:</strong> The indexing and query pipelines are intentionally separate. You index once (or on a schedule), then query thousands of times. Valkey's in-memory KNN means retrieval adds ~1ms to your total latency — negligible compared to the LLM call.</p>
+</div>
+
+<table>
+<tr><th>Stage</th><th>Component</th><th>What it does</th></tr>
+<tr><td>Index</td><td><code>SentenceTransformersDocumentEmbedder</code></td><td>Generates 768-dim embeddings for each doc</td></tr>
+<tr><td>Index</td><td><code>DocumentWriter</code></td><td>Writes docs + embeddings to Valkey</td></tr>
+<tr><td>Query</td><td><code>SentenceTransformersTextEmbedder</code></td><td>Embeds the user's question</td></tr>
+<tr><td>Query</td><td><code>ValkeyEmbeddingRetriever</code></td><td>KNN search — returns top-k similar docs</td></tr>
+<tr><td>Query</td><td><code>ChatPromptBuilder</code></td><td>Injects retrieved docs into the prompt</td></tr>
+<tr><td>Query</td><td><code>OpenAIChatGenerator</code></td><td>Generates the final grounded answer</td></tr>
+</table>
+
+<h2>Swap the Embedding Model</h2>
+<p>Any Haystack-compatible embedder works. Just keep <code>embedding_dim</code> consistent between the document store and both embedders:</p>
+<pre><code><span class="comment"># OpenAI embeddings (1536-dim)</span>
+<span class="keyword">from</span> haystack.components.embedders <span class="keyword">import</span> OpenAIDocumentEmbedder, OpenAITextEmbedder
+
+document_store = ValkeyDocumentStore(
+    nodes_list=[(<span class="string">"localhost"</span>, <span class="num">6379</span>)],
+    index_name=<span class="string">"rag_docs_openai"</span>,
+    embedding_dim=<span class="num">1536</span>,  <span class="comment"># text-embedding-3-small</span>
+    distance_metric=<span class="string">"cosine"</span>,
+)</code></pre>
+
+<div class="nav-prev-next">
+<a href="01-getting-started.html"><span class="label">← Previous</span><span class="title">01 — Getting Started</span></a>
+<div></div>
+</div>
+</article>
+</body>
+</html>

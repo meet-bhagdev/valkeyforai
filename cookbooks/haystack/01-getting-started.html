@@ -1,0 +1,127 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>01 — Getting Started with Haystack + Valkey — Valkey for AI</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../cookbook.css">
+</head>
+<body>
+<nav class="nav"><div class="nav-inner">
+<a href="/" class="nav-logo"><img src="/valkey-logo.svg" alt="Valkey"><span class="accent">for ai</span></a>
+<div class="nav-links"><a href="/#use-cases">Use Cases</a><a href="/cookbooks/haystack/">Cookbooks</a><a href="https://github.com/meet-bhagdev/valkeyforai/tree/main" target="_blank">GitHub</a></div>
+</div></nav>
+
+<article>
+<div class="breadcrumb"><a href="/">Home</a> → <a href="/cookbooks/haystack/">Haystack</a> → 01 Getting Started</div>
+<div class="meta"><span class="diff-easy">Beginner</span><span class="lang">Python</span><span class="lang">~10 min</span></div>
+
+<h1>Getting <span class="gradient">Started</span></h1>
+<p class="lead">Connect Haystack to Valkey, store documents with embeddings, and run your first vector similarity search — all in under 10 minutes.</p>
+
+<h2>Prerequisites</h2>
+<ul>
+<li>Docker installed (or a running Valkey instance)</li>
+<li>Python 3.10+ (required by <code>haystack-ai</code> and <code>valkey-haystack</code>)</li>
+</ul>
+
+<h2>Step 1: Start Valkey</h2>
+<p>Vector search requires the <code>valkey-bundle</code> image, which includes the valkey-search module:</p>
+<pre><code>docker run -d --name valkey -p 6379:6379 valkey/valkey-bundle:latest</code></pre>
+<p>Verify it's running and the search module is loaded:</p>
+<pre><code>docker exec valkey valkey-cli MODULE LIST
+<span class="comment"># should include: name search</span></code></pre>
+
+<div class="callout">
+<p><strong>Note:</strong> On first run you'll see <code>Error executing command: Index not found</code> — this is expected. The document store checks for an existing index, doesn't find one, then creates it automatically when you write your first documents.</p>
+</div>
+
+<h2>Step 2: Install Dependencies</h2>
+<pre><code>pip install haystack-ai
+pip install valkey-haystack
+pip install sentence-transformers</code></pre>
+
+<p>The <code>valkey-haystack</code> package provides <code>ValkeyDocumentStore</code> and <code>ValkeyEmbeddingRetriever</code> as first-class Haystack components.</p>
+
+<h2>Step 3: Connect to ValkeyDocumentStore</h2>
+<pre><code><span class="keyword">from</span> haystack_integrations.document_stores.valkey <span class="keyword">import</span> ValkeyDocumentStore
+
+document_store = ValkeyDocumentStore(
+    nodes_list=[(<span class="string">"localhost"</span>, <span class="num">6379</span>)],
+    index_name=<span class="string">"my_documents"</span>,
+    embedding_dim=<span class="num">768</span>,        <span class="comment"># must match your embedding model</span>
+    distance_metric=<span class="string">"cosine"</span>, <span class="comment"># cosine | l2 | ip</span>
+)
+
+<span class="func">print</span>(document_store.count_documents())  <span class="comment"># 0</span></code></pre>
+
+<h2>Step 4: Write Documents</h2>
+<pre><code><span class="keyword">from</span> haystack <span class="keyword">import</span> Document
+
+docs = [
+    Document(content=<span class="string">"Valkey is a high-performance in-memory data store."</span>),
+    Document(content=<span class="string">"Haystack is an open-source LLM framework by deepset."</span>),
+    Document(content=<span class="string">"Vector search finds semantically similar documents."</span>),
+]
+
+document_store.write_documents(docs)
+<span class="func">print</span>(document_store.count_documents())  <span class="comment"># 3</span></code></pre>
+
+<h2>Step 5: Embed and Index Documents</h2>
+<p>Documents need embeddings before they can be searched by similarity. Use a <code>DocumentEmbedder</code> to generate and store them:</p>
+<pre><code><span class="keyword">from</span> haystack.components.embedders <span class="keyword">import</span> SentenceTransformersDocumentEmbedder
+
+doc_embedder = SentenceTransformersDocumentEmbedder(
+    model=<span class="string">"sentence-transformers/all-mpnet-base-v2"</span>  <span class="comment"># 768-dim, matches embedding_dim above</span>
+)
+doc_embedder.warm_up()
+
+docs_with_embeddings = doc_embedder.run(docs)[<span class="string">"documents"</span>]
+document_store.write_documents(docs_with_embeddings, policy=<span class="string">"overwrite"</span>)</code></pre>
+
+<h2>Step 6: Run a Similarity Search</h2>
+<pre><code><span class="keyword">from</span> haystack.components.embedders <span class="keyword">import</span> SentenceTransformersTextEmbedder
+<span class="keyword">from</span> haystack_integrations.components.retrievers.valkey <span class="keyword">import</span> ValkeyEmbeddingRetriever
+
+text_embedder = SentenceTransformersTextEmbedder(
+    model=<span class="string">"sentence-transformers/all-mpnet-base-v2"</span>
+)
+text_embedder.warm_up()
+
+retriever = ValkeyEmbeddingRetriever(document_store=document_store, top_k=<span class="num">2</span>)
+
+query = <span class="string">"What is Valkey used for?"</span>
+query_embedding = text_embedder.run(query)[<span class="string">"embedding"</span>]
+results = retriever.run(query_embedding=query_embedding)
+
+<span class="keyword">for</span> doc <span class="keyword">in</span> results[<span class="string">"documents"</span>]:
+    <span class="func">print</span>(<span class="string">f"Score: {doc.score:.3f} | {doc.content}"</span>)</code></pre>
+
+<p>Output:</p>
+<pre><code>Score: 0.921 | Valkey is a high-performance in-memory data store.
+Score: 0.743 | Vector search finds semantically similar documents.</code></pre>
+
+<h2>How It Works</h2>
+<div class="callout">
+<p><strong>Key Insight:</strong> <code>ValkeyDocumentStore</code> stores each document's embedding as a Valkey hash and builds a vector index using Valkey's native vector search. Queries are single-hop — embed the query, run KNN against the index, get ranked results back. No external vector DB needed.</p>
+</div>
+
+<table>
+<tr><th>Component</th><th>Role</th></tr>
+<tr><td><code>ValkeyDocumentStore</code></td><td>Stores documents + embeddings, manages the vector index</td></tr>
+<tr><td><code>SentenceTransformersDocumentEmbedder</code></td><td>Generates embeddings for documents at index time</td></tr>
+<tr><td><code>SentenceTransformersTextEmbedder</code></td><td>Generates embedding for the query at search time</td></tr>
+<tr><td><code>ValkeyEmbeddingRetriever</code></td><td>Runs KNN search and returns ranked documents</td></tr>
+</table>
+
+<div class="nav-prev-next">
+<div></div>
+<a href="02-rag-pipeline.html" class="next">
+<span class="label">Next →</span>
+<span class="title">02 — RAG Pipeline</span>
+</a>
+</div>
+</article>
+</body>
+</html>
