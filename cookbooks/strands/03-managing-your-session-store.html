@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>03 — Managing Your ValkeySession Store — Strands — Valkey for AI</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../cookbook.css">
+</head>
+<body>
+<nav class="nav"><div class="nav-inner">
+<a href="/" class="nav-logo"><img src="/valkey-logo.svg" alt="Valkey"><span class="accent">for ai</span></a>
+<div class="nav-links"><a href="/#use-cases">Use Cases</a><a href="/cookbooks/strands/">Cookbooks</a><a href="https://github.com/strands-agents/sdk-python" target="_blank">GitHub</a></div>
+</div></nav>
+
+<article>
+<div class="breadcrumb"><a href="/">Home</a> → <a href="/cookbooks/strands/">Strands</a> → 03 Managing Your ValkeySession Store</div>
+<div class="meta"><span class="diff-mid">Intermediate</span><span class="lang">Python</span><span class="lang">~15 min</span></div>
+
+<h1>Managing Your <span class="gradient">ValkeySession Store</span></h1>
+<p class="lead">Delete sessions on logout, query raw keys to see exactly what's in Valkey, and share a single session across multiple agents in an orchestrator pattern.</p>
+
+<h2>Share a Session Across Multiple Agents</h2>
+<p>A single session can hold state for multiple agents — each gets its own agent key and message keys under the same session ID. This is the foundation for orchestrator/subagent patterns where agents need to share context:</p>
+<pre><code><span class="keyword">from</span> strands <span class="keyword">import</span> Agent
+<span class="keyword">from</span> strands_valkey_session_manager <span class="keyword">import</span> ValkeySessionManager
+
+client = valkey.Valkey(host=<span class="string">"localhost"</span>, port=<span class="num">6379</span>, decode_responses=<span class="keyword">True</span>)
+
+<span class="comment"># Two agents sharing the same session_id</span>
+researcher = Agent(
+    system_prompt=<span class="string">"You are a research agent."</span>,
+    session_manager=ValkeySessionManager(
+        session_id=<span class="string">"workflow-001"</span>, client=client
+    ),
+)
+writer = Agent(
+    system_prompt=<span class="string">"You are a writing agent."</span>,
+    session_manager=ValkeySessionManager(
+        session_id=<span class="string">"workflow-001"</span>, client=client
+    ),
+)
+
+researcher(<span class="string">"Research the key benefits of Valkey for AI workloads."</span>)
+writer(<span class="string">"Write a short blog intro about Valkey for AI."</span>)
+
+<span class="comment"># Each agent has its own message keys under the same session</span>
+<span class="comment"># session:workflow-001:agent:researcher:message:&lt;id&gt;</span>
+<span class="comment"># session:workflow-001:agent:writer:message:&lt;id&gt;</span></code></pre>
+
+<h2>Clean Up on Logout</h2>
+<p>Call <code>delete_session()</code> to remove all keys for a session — the session record, agent state, and every message — in one call:</p>
+<pre><code><span class="keyword">import</span> valkey
+<span class="keyword">from</span> strands_valkey_session_manager <span class="keyword">import</span> ValkeySessionManager
+
+client = valkey.Valkey(host=<span class="string">"localhost"</span>, port=<span class="num">6379</span>, decode_responses=<span class="keyword">True</span>)
+sm = ValkeySessionManager(session_id=<span class="string">"user-42"</span>, client=client)
+
+<span class="comment"># Removes session, agent state, and all messages for this session</span>
+sm.delete_session(<span class="string">"user-42"</span>)
+print(<span class="string">"Session deleted"</span>)</code></pre>
+
+<h2>Query Valkey Directly</h2>
+<p>You can inspect the raw keys at any time to see exactly what's stored and how long until each key expires:</p>
+<pre><code><span class="comment"># List all keys for a session with their TTLs</span>
+keys = client.keys(<span class="string">"session:user-42*"</span>)
+<span class="keyword">for</span> k <span class="keyword">in</span> sorted(keys):
+    ttl = client.ttl(k)
+    print(<span class="string">f"{k}  (TTL: {ttl}s)"</span>)
+
+<span class="comment"># session:user-42                                              (TTL: 3598s)</span>
+<span class="comment"># session:user-42:agent:default                                (TTL: 3597s)</span>
+<span class="comment"># session:user-42:agent:default:message:&lt;uuid&gt;                 (TTL: 3596s)</span>
+<span class="comment"># session:user-42:agent:default:message:&lt;uuid&gt;                 (TTL: 3596s)</span></code></pre>
+
+<div class="nav-prev-next">
+<a href="02-session-internals.html" class="prev">
+<span class="label">← Previous</span>
+<span class="title">02 — Managing Session Data</span>
+</a>
+<div></div>
+</div>
+</article>
+</body>
+</html>

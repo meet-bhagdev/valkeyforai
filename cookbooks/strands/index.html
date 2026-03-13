@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Strands Agents + Valkey Cookbooks — Valkey for AI</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../cookbook.css">
+<style>
+.cookbook-grid{display:grid;gap:16px;margin:32px 0}
+.cookbook-card{display:block;background:var(--card);border:1px solid var(--brd);border-radius:var(--radius);padding:24px;transition:.2s}
+.cookbook-card:hover{background:var(--card-h);text-decoration:none;transform:translateY(-2px)}
+.cookbook-card .num{font-size:13px;color:var(--g2);font-weight:700;margin-bottom:8px}
+.cookbook-card h3{margin:0 0 8px;font-size:17px}
+.cookbook-card p{font-size:14px;color:var(--t3);margin:0 0 12px}
+.cookbook-card .tags{display:flex;gap:8px;flex-wrap:wrap}
+.hero{text-align:center;padding:60px 24px 40px;max-width:800px;margin:0 auto}
+.hero h1{font-size:44px;margin-bottom:16px}
+.hero .lead{margin:0 auto 32px;max-width:600px}
+.arch{background:var(--card);border:1px solid var(--brd);border-radius:12px;padding:20px;font-family:'SF Mono','Fira Code',monospace;font-size:13px;line-height:1.6;color:var(--t2);white-space:pre;overflow-x:auto;margin:0 auto 40px;max-width:700px}
+.cta{display:flex;gap:16px;justify-content:center;margin-top:32px;flex-wrap:wrap}
+.cta a{padding:10px 24px;border-radius:100px;font-size:14px;font-weight:600;transition:.2s}
+.cta a.primary{background:linear-gradient(135deg,var(--g1),var(--g2));color:#fff}
+.cta a.secondary{border:1px solid var(--brd);color:var(--t2)}
+.cta a:hover{transform:translateY(-1px);text-decoration:none}
+</style>
+</head>
+<body>
+<nav class="nav"><div class="nav-inner">
+<a href="/" class="nav-logo"><img src="/valkey-logo.svg" alt="Valkey"><span class="accent">for ai</span></a>
+<div class="nav-links"><a href="/#use-cases">Use Cases</a><a href="/#frameworks">Frameworks</a><a href="https://github.com/strands-agents/sdk-python" target="_blank">GitHub</a></div>
+</div></nav>
+
+<div class="hero">
+<h1>Strands Agents</h1>
+<p class="lead">Use the official <code>strands-valkey-session-manager</code> community package to back your Strands agents with Valkey — persisting conversation history, session metadata, and agent state across invocations.</p>
+<div class="arch">┌──────────────────────────────────────────────────────────┐
+│                    Strands Agent                         │
+│       Agent(session_manager=ValkeySessionManager(...))   │
+└──────────────────────────┬───────────────────────────────┘
+                           │ strands-valkey-session-manager
+                           ▼
+              ┌────────────────────────────────────────┐
+              │   ElastiCache for Valkey               │
+              │                                        │
+              │  session:{id}                → Session │
+              │  session:{id}:agent:{id}     → Agent   │
+              │  session:{id}:agent:{id}:    →         │
+              │    message:{msg_id}          → Message │
+              └────────────────────────────────────────┘</div>
+</div>
+
+<article>
+<div class="cookbook-grid">
+
+<a href="01-getting-started.html" class="cookbook-card">
+<div class="num">01</div>
+<h3>Getting Started</h3>
+<p>Install <code>strands-valkey-session-manager</code>, create a <code>ValkeySessionManager</code>, and wire it to a Strands agent. Persistent conversation history in under 15 minutes.</p>
+<div class="tags">
+<span class="diff-easy">Beginner</span>
+<span class="lang">Python</span>
+<span style="background:rgba(255,255,255,.06);color:var(--t3)">~15 min</span>
+</div>
+</a>
+
+<a href="02-session-internals.html" class="cookbook-card">
+<div class="num">02</div>
+<h3>Managing Session Data</h3>
+<p>Understand the key structure and shape of session, agent, and message objects stored by the package. Use <code>list_messages()</code> and other built-in API methods to inspect and manage session data.</p>
+<div class="tags">
+<span class="diff-mid">Intermediate</span>
+<span class="lang">Python</span>
+<span style="background:rgba(255,255,255,.06);color:var(--t3)">~20 min</span>
+</div>
+</a>
+
+<a href="03-managing-your-session-store.html" class="cookbook-card">
+<div class="num">03</div>
+<h3>Managing Your ValkeySession Store</h3>
+<p>Delete sessions on logout, query raw keys to inspect what's stored, and share a session across multiple agents in an orchestrator pattern.</p>
+<div class="tags">
+<span class="diff-mid">Intermediate</span>
+<span class="lang">Python</span>
+<span style="background:rgba(255,255,255,.06);color:var(--t3)">~15 min</span>
+</div>
+</a>
+
+</div>
+
+<div class="cta">
+<a href="01-getting-started.html" class="primary">Start Cookbook 01 →</a>
+<a href="/demo/strands.html" class="secondary">🎮 Try Live Demo</a>
+</div>
+</article>
+</body>
+</html>

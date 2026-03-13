@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>01 — Getting Started with Strands + Valkey — Valkey for AI</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../cookbook.css">
+</head>
+<body>
+<nav class="nav"><div class="nav-inner">
+<a href="/" class="nav-logo"><img src="/valkey-logo.svg" alt="Valkey"><span class="accent">for ai</span></a>
+<div class="nav-links"><a href="/#use-cases">Use Cases</a><a href="/cookbooks/strands/">Cookbooks</a><a href="https://github.com/strands-agents/sdk-python" target="_blank">GitHub</a></div>
+</div></nav>
+
+<article>
+<div class="breadcrumb"><a href="/">Home</a> → <a href="/cookbooks/strands/">Strands</a> → 01 Getting Started</div>
+<div class="meta"><span class="diff-easy">Beginner</span><span class="lang">Python</span><span class="lang">~15 min</span></div>
+
+<h1>Getting <span class="gradient">Started</span></h1>
+<p class="lead">Use the official <code>strands-valkey-session-manager</code> community package to give your Strands agent persistent conversation history, session metadata, and agent state — backed by Valkey.</p>
+
+<p>The <code>strands-valkey-session-manager</code> package provides a ready-to-use <code>ValkeySessionManager</code> that plugs directly into Strands' <code>Agent(session_manager=...)</code> parameter. No custom implementation needed.</p>
+
+<h2>What Gets Stored</h2>
+<p>The session manager persists three types of data to Valkey:</p>
+<table>
+<tr><th>Data</th><th>Key Pattern</th><th>Description</th></tr>
+<tr><td>Session Record</td><td><code>session:{id}</code></td><td>Top-level record for a conversation. Tracks when the session was created and last updated.</td></tr>
+<tr><td>Agent State</td><td><code>session:{id}:agent:{agent_id}</code></td><td>Per-agent record within a session. Tracks message count and interrupt state — used to resume the agent exactly where it left off.</td></tr>
+<tr><td>Conversation Messages</td><td><code>session:{id}:agent:{agent_id}:message:{msg_id}</code></td><td>A single turn in the conversation. Stores the role (user or assistant), content, any tool calls or results, and a timestamp.</td></tr>
+</table>
+
+<h2>Prerequisites</h2>
+<ul>
+<li>Docker installed</li>
+<li>Python 3.10+</li>
+<li>An LLM provider configured (Strands supports Amazon Bedrock, Anthropic, OpenAI, and others)</li>
+</ul>
+
+<h2>Step 1: Start Valkey</h2>
+<pre><code>docker run -d --name valkey -p 6379:6379 valkey/valkey-bundle:latest</code></pre>
+<pre><code>docker exec valkey valkey-cli PING
+<span class="comment"># PONG</span></code></pre>
+
+<h2>Step 2: Install Dependencies</h2>
+<pre><code>pip install strands-agents strands-agents-tools
+pip install valkey
+pip install strands-valkey-session-manager</code></pre>
+
+<div class="callout">
+<p><strong>Package:</strong> <code>strands-valkey-session-manager</code> is a community package. Source: <a href="https://github.com/jeromevdl/strands-valkey-session-manager" target="_blank">GitHub</a> · Docs: <a href="https://strandsagents.com/docs/community/session-managers/strands-valkey-session-manager/" target="_blank">strandsagents.com/docs/community/session-managers/strands-valkey-session-manager/</a></p>
+</div>
+
+<h2>Step 3: Connect to Valkey</h2>
+<pre><code><span class="keyword">import</span> valkey
+<span class="keyword">from</span> strands_valkey_session_manager <span class="keyword">import</span> ValkeySessionManager
+
+<span class="comment"># Connect to Valkey</span>
+client = valkey.Valkey(host=<span class="string">"localhost"</span>, port=<span class="num">6379</span>, decode_responses=<span class="keyword">True</span>)
+
+<span class="comment"># Create the session manager — one per session</span>
+session_manager = ValkeySessionManager(
+    session_id=<span class="string">"user-42"</span>,
+    client=client,
+)</code></pre>
+
+<h2>Step 4: Give Your Agent Memory</h2>
+<pre><code><span class="keyword">from</span> strands <span class="keyword">import</span> Agent
+
+agent = Agent(
+    system_prompt=<span class="string">"You are a helpful assistant."</span>,
+    session_manager=session_manager,
+)
+
+<span class="comment"># Strands automatically persists every turn to Valkey</span>
+response = agent(<span class="string">"My name is Alex and I'm building a RAG pipeline."</span>)
+print(response)</code></pre>
+
+<div class="nav-prev-next">
+<div></div>
+<a href="02-session-internals.html" class="next">
+<span class="label">Next →</span>
+<span class="title">02 — Managing Session Data</span>
+</a>
+</div>
+</article>
+</body>
+</html>

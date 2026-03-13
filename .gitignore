@@ -29,3 +29,10 @@ pids
 # Temporary folders
 tmp/
 temp/
+
+# Python virtual environments
+haystack-test/strands-venv/
+**/venv/
+**/.venv/
+__pycache__/
+*.pyc
