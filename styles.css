@@ -990,3 +990,12 @@ body.light .gradient-text {
     -webkit-text-fill-color: transparent;
     background-clip: text;
 }
+
+body.light .nav { background: rgba(255,255,255,0.85); }
+body.light .nav-github { background: rgba(0,0,0,0.04); border-color: rgba(0,0,0,0.1); }
+body.light .nav-mobile-toggle span { background: #1d1d1f; }
+body.light .bento-tags span { background: rgba(0,0,0,0.06); color: rgba(0,0,0,0.5); }
+body.light .btn-secondary { background: rgba(0,0,0,0.04); border-color: rgba(0,0,0,0.1); color: #1d1d1f; }
+body.light .footer { border-color: rgba(0,0,0,0.08); }
+body.light .cta-card { border-color: rgba(0,0,0,0.08); }
+body.light .stat-divider { background: rgba(0,0,0,0.1); }
