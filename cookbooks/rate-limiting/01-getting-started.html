@@ -29,7 +29,7 @@
 <h2>Step 1: Start Valkey</h2>
 <pre><code>docker run -d --name valkey -p 6379:6379 valkey/valkey:latest</code></pre>
 <p>Verify it's running:</p>
-<pre><code>redis-cli ping
+<pre><code>valkey-cli ping
 <span class="comment"># PONG</span></code></pre>
 
 <h2>Step 2: Install Dependencies</h2>
