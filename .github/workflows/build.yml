@@ -1,0 +1,38 @@
+name: Build Cookbooks from Markdown
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'content/**'
+      - 'build.js'
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Build cookbooks from markdown
+        run: node build.js
+
+      - name: Check for changes
+        id: changes
+        run: |
+          git diff --quiet cookbooks/ || echo "changed=true" >> $GITHUB_OUTPUT
+
+      - name: Commit and push generated HTML
+        if: steps.changes.outputs.changed == 'true'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add cookbooks/
+          git commit -m "Auto-build: regenerate cookbooks from markdown"
+          git push
