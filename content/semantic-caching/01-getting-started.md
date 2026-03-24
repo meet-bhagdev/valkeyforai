@@ -51,8 +51,8 @@ def create_cache_index():
         client.execute_command(
             "FT.CREATE", "cache_idx",
             "SCHEMA",
-            "prompt", "TEXT",
-            "response", "TEXT",
+            "prompt", "TAG",
+            "response", "TAG",
             "embedding", "VECTOR", "HNSW", "6",
             "TYPE", "FLOAT32",
             "DIM", str(EMBEDDING_DIM),

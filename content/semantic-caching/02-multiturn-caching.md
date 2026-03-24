@@ -32,8 +32,8 @@ try:
     client.execute_command(
         "FT.CREATE", "conv_cache_idx",
         "SCHEMA",
-        "context_summary", "TEXT",
-        "response", "TEXT",
+        "context_summary", "TAG",
+        "response", "TAG",
         "user_id", "TAG",
         "turn_count", "NUMERIC",
         "embedding", "VECTOR", "HNSW", "6",

@@ -30,7 +30,7 @@
         client.execute_command(
             "FT.CREATE", "semantic_idx",
             "SCHEMA",
-            "content", "TEXT",
+            "content", "TAG",
             "embedding", "VECTOR", "HNSW", "6",
             "TYPE", "FLOAT32",
             "DIM", str(EMBEDDING_DIM),

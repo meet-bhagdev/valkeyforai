@@ -18,7 +18,7 @@ Pure vector search returns the most similar items globally. But often you need t
         client.execute_command(
             "FT.CREATE", "articles_idx",
             "SCHEMA",
-            "title", "TEXT",
+            "title", "TAG",
             "category", "TAG",
             "year", "NUMERIC",
             "embedding", "VECTOR", "HNSW", "6",

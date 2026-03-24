@@ -55,7 +55,7 @@ EMBEDDING_DIM = 1536  # text-embedding-3-small outputs 1536 dimensions
     client.execute_command(
         &quot;FT.CREATE&quot;, &quot;semantic_idx&quot;,
         &quot;SCHEMA&quot;,
-        &quot;content&quot;, &quot;TEXT&quot;,
+        &quot;content&quot;, &quot;TAG&quot;,
         &quot;embedding&quot;, &quot;VECTOR&quot;, &quot;HNSW&quot;, &quot;6&quot;,
         &quot;TYPE&quot;, &quot;FLOAT32&quot;,
         &quot;DIM&quot;, str(EMBEDDING_DIM),

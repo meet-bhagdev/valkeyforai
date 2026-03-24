@@ -73,8 +73,8 @@ CACHE_TTL = 3600  # 1 hour
         client.execute_command(
             &quot;FT.CREATE&quot;, &quot;cache_idx&quot;,
             &quot;SCHEMA&quot;,
-            &quot;prompt&quot;, &quot;TEXT&quot;,
-            &quot;response&quot;, &quot;TEXT&quot;,
+            &quot;prompt&quot;, &quot;TAG&quot;,
+            &quot;response&quot;, &quot;TAG&quot;,
             &quot;embedding&quot;, &quot;VECTOR&quot;, &quot;HNSW&quot;, &quot;6&quot;,
             &quot;TYPE&quot;, &quot;FLOAT32&quot;,
             &quot;DIM&quot;, str(EMBEDDING_DIM),
