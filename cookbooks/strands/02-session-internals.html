@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>02 — Managing Session Data — Strands — Valkey for AI</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../cookbook.css">
+</head>
+<body>
+<nav class="nav"><div class="nav-inner">
+<a href="/" class="nav-logo"><img src="/valkey-logo.svg" alt="Valkey"><span class="accent">for ai</span></a>
+<div class="nav-links"><a href="/#use-cases">Use Cases</a><a href="/cookbooks/strands/">Cookbooks</a><a href="https://github.com/strands-agents/sdk-python" target="_blank">GitHub</a></div>
+</div></nav>
+
+<article>
+<div class="breadcrumb"><a href="/">Home</a> → <a href="/cookbooks/strands/">Strands</a> → 02 Managing Session Data</div>
+<div class="meta"><span class="diff-mid">Intermediate</span><span class="lang">Python</span><span class="lang">~20 min</span></div>
+
+<h1>Managing <span class="gradient">Session Data</span></h1>
+<p class="lead">Understand exactly what <code>strands-valkey-session-manager</code> stores in Valkey — the key structure, the shape of each object, and how to use the built-in API methods to inspect and manage session data.</p>
+
+<h2>What Gets Stored Per Session</h2>
+
+<h3>Session Record</h3>
+<p>One record per conversation. Tracks when the session was created and last updated.</p>
+<pre><code><span class="comment"># Key: session:{session_id}</span>
+{
+  <span class="string">"session_id"</span>: <span class="string">"user-42"</span>,
+  <span class="string">"created_at"</span>: <span class="string">"2025-06-01T10:00:00+00:00"</span>,
+  <span class="string">"updated_at"</span>: <span class="string">"2025-06-01T10:05:32+00:00"</span>,
+  <span class="string">"metadata"</span>: {}
+}</code></pre>
+
+<h3>Agent State</h3>
+<p>One record per agent within a session. Tracks message count and interrupt state so the agent can resume exactly where it left off.</p>
+<pre><code><span class="comment"># Key: session:{session_id}:agent:{agent_id}</span>
+{
+  <span class="string">"agent_id"</span>: <span class="string">"default"</span>,
+  <span class="string">"session_id"</span>: <span class="string">"user-42"</span>,
+  <span class="string">"conversation_manager_state"</span>: {
+    <span class="string">"message_count"</span>: <span class="num">4</span>
+  },
+  <span class="string">"interrupt_state"</span>: <span class="keyword">null</span>
+}</code></pre>
+
+<h3>Conversation Messages</h3>
+<p>One record per turn. Stores the role (user or assistant), content text, any tool calls or results, and a timestamp.</p>
+<pre><code><span class="comment"># Key: session:{session_id}:agent:{agent_id}:message:{message_id}</span>
+{
+  <span class="string">"message_id"</span>: <span class="string">"3f8a1c2d-..."</span>,
+  <span class="string">"role"</span>: <span class="string">"user"</span>,
+  <span class="string">"content"</span>: [
+    {<span class="string">"text"</span>: <span class="string">"My name is Alex and I'm building a RAG pipeline."</span>}
+  ],
+  <span class="string">"created_at"</span>: <span class="string">"2025-06-01T10:00:01+00:00"</span>
+}
+
+<span class="comment"># Assistant message with tool use:</span>
+{
+  <span class="string">"message_id"</span>: <span class="string">"7b2e9f4a-..."</span>,
+  <span class="string">"role"</span>: <span class="string">"assistant"</span>,
+  <span class="string">"content"</span>: [
+    {<span class="string">"text"</span>: <span class="string">"Nice to meet you, Alex! ..."</span>},
+    {<span class="string">"toolUse"</span>: {<span class="string">"toolUseId"</span>: <span class="string">"..."</span>, <span class="string">"name"</span>: <span class="string">"search"</span>, <span class="string">"input"</span>: {<span class="string">"query"</span>: <span class="string">"RAG pipeline"</span>}}}
+  ],
+  <span class="string">"created_at"</span>: <span class="string">"2025-06-01T10:00:03+00:00"</span>
+}</code></pre>
+
+<h2>Pick Up Where You Left Off</h2>
+<p>Create a new <code>Agent</code> with the same <code>session_id</code> — Strands reloads the full conversation history from Valkey automatically:</p>
+<pre><code><span class="keyword">import</span> valkey
+<span class="keyword">from</span> strands <span class="keyword">import</span> Agent
+<span class="keyword">from</span> strands_valkey_session_manager <span class="keyword">import</span> ValkeySessionManager
+
+<span class="comment"># In a new Python process — history is restored from Valkey</span>
+client = valkey.Valkey(host=<span class="string">"localhost"</span>, port=<span class="num">6379</span>, decode_responses=<span class="keyword">True</span>)
+session_manager = ValkeySessionManager(
+    session_id=<span class="string">"user-42"</span>,  <span class="comment"># same session ID</span>
+    client=client,
+)
+agent = Agent(session_manager=session_manager)
+
+response = agent(<span class="string">"What was I just telling you about?"</span>)
+print(response)
+<span class="comment"># Agent correctly recalls: "You mentioned you're building a RAG pipeline."</span></code></pre>
+
+<h2>See What Got Saved</h2>
+<pre><code><span class="comment"># List all messages for this session</span>
+messages = session_manager.list_messages()
+<span class="keyword">for</span> msg <span class="keyword">in</span> messages:
+    print(<span class="string">f"[{msg['role']}] {str(msg['content'])[:80]}"</span>)
+
+<span class="comment"># Or inspect raw keys directly</span>
+keys = client.keys(<span class="string">"session:user-42*"</span>)
+<span class="keyword">for</span> k <span class="keyword">in</span> sorted(keys):
+    print(k)</code></pre>
+
+<h2>Read and Update Session Data</h2>
+<p>The <code>ValkeySessionManager</code> exposes methods for all CRUD operations. You don't need to touch Valkey directly for most tasks:</p>
+<pre><code><span class="keyword">import</span> valkey
+<span class="keyword">from</span> strands_valkey_session_manager <span class="keyword">import</span> ValkeySessionManager
+
+client = valkey.Valkey(host=<span class="string">"localhost"</span>, port=<span class="num">6379</span>, decode_responses=<span class="keyword">True</span>)
+sm = ValkeySessionManager(session_id=<span class="string">"user-42"</span>, client=client)
+
+<span class="comment"># Read session metadata</span>
+session = sm.read_session(<span class="string">"user-42"</span>)
+print(<span class="string">f"Created: {session.created_at}"</span>)
+
+<span class="comment"># Read agent state</span>
+agent_state = sm.read_agent(<span class="string">"user-42"</span>, <span class="string">"default"</span>)
+print(<span class="string">f"Message count: {agent_state.conversation_manager_state}"</span>)
+
+<span class="comment"># List all messages in order</span>
+messages = sm.list_messages()
+print(<span class="string">f"{len(messages)} messages in session"</span>)
+<span class="keyword">for</span> msg <span class="keyword">in</span> messages:
+    text_blocks = [b[<span class="string">"text"</span>] <span class="keyword">for</span> b <span class="keyword">in</span> msg.content <span class="keyword">if</span> <span class="string">"text"</span> <span class="keyword">in</span> b]
+    preview = text_blocks[<span class="num">0</span>][:<span class="num">80</span>] <span class="keyword">if</span> text_blocks <span class="keyword">else</span> <span class="string">"[tool use/result]"</span>
+    print(<span class="string">f"  [{msg.role:9}] {preview}"</span>)</code></pre>
+
+<h2>Full API Reference</h2>
+<table>
+<tr><th>Method</th><th>Description</th></tr>
+<tr><td><code>create_session(session)</code></td><td>Create a new session record</td></tr>
+<tr><td><code>read_session(session_id)</code></td><td>Read session metadata</td></tr>
+<tr><td><code>delete_session(session_id)</code></td><td>Delete a session and all its data</td></tr>
+<tr><td><code>create_agent(session_id, agent)</code></td><td>Create agent state record</td></tr>
+<tr><td><code>read_agent(session_id, agent_id)</code></td><td>Read agent state</td></tr>
+<tr><td><code>update_agent(session_id, agent)</code></td><td>Update agent state</td></tr>
+<tr><td><code>create_message(session_id, agent_id, message)</code></td><td>Store a new message</td></tr>
+<tr><td><code>read_message(session_id, agent_id, message_id)</code></td><td>Read a single message by ID</td></tr>
+<tr><td><code>update_message(session_id, agent_id, message)</code></td><td>Update an existing message</td></tr>
+<tr><td><code>list_messages()</code></td><td>List all messages for the current session in order</td></tr>
+</table>
+
+<h2>How Keys Are Organized</h2>
+<p>The package uses a hierarchical key scheme. Every key is scoped to a session ID:</p>
+<pre><code>session:{session_id}                                         <span class="comment"># Session metadata</span>
+session:{session_id}:agent:{agent_id}                        <span class="comment"># Agent state and metadata</span>
+session:{session_id}:agent:{agent_id}:message:{message_id}   <span class="comment"># Individual messages</span></code></pre>
+
+<div class="nav-prev-next">
+<a href="01-getting-started.html" class="prev">
+<span class="label">← Previous</span>
+<span class="title">01 — Getting Started</span>
+</a>
+<a href="03-managing-your-session-store.html" class="next">
+<span class="label">Next →</span>
+<span class="title">03 — Managing Your ValkeySession Store</span>
+</a>
+</div>
+</article>
+</body>
+</html>
