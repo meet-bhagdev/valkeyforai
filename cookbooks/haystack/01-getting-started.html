@@ -6,124 +6,146 @@
 <title>01 - Getting Started with Haystack + Valkey - Valkey for AI</title>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="../cookbook.css">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css">
+<style>
+body.light .nav{background:rgba(255,255,255,.9)!important}
+body.light pre{background:rgba(0,0,0,.03)!important;border-color:rgba(0,0,0,.08)!important}
+body.light code{color:#1d1d1f}
+body.light .callout{background:rgba(0,0,0,.02);border-color:rgba(0,0,0,.08)}
+body.light table{border-color:rgba(0,0,0,.08)}
+body.light th{background:rgba(0,0,0,.04)}
+body.light td{border-color:rgba(0,0,0,.06)}
+body.light{--bg:#fff;--bg-elevated:#f5f5f7;--bg-card:rgba(0,0,0,.03);--bg-card-hover:rgba(0,0,0,.06);--brd:rgba(0,0,0,.08);--t1:#1d1d1f;--t2:rgba(29,29,31,.6);--t3:rgba(29,29,31,.4)}
+.theme-toggle{background:rgba(128,128,128,.12);border:1px solid rgba(128,128,128,.2);border-radius:100px;width:36px;height:36px;display:flex;align-items:center;justify-content:center;cursor:pointer;padding:0;position:fixed;top:18px;right:24px;z-index:1001}
+pre{position:relative}
+pre code.hljs{background:transparent!important;padding:0}
+</style>
 </head>
 <body>
-<nav class="nav"><div class="nav-inner">
-<a href="/" class="nav-logo"><img src="/valkey-logo.svg" alt="Valkey"><span class="accent">for ai</span></a>
-<div class="nav-links"><a href="/#use-cases">Use Cases</a><a href="/cookbooks/haystack/">Cookbooks</a><a href="https://github.com/meet-bhagdev/valkeyforai/tree/main" target="_blank">GitHub</a></div>
-</div></nav>
-
+<nav class="nav"><div class="nav-inner"><a href="/" class="nav-logo"><img src="/valkey-logo.svg" alt="Valkey"><span class="accent">for ai</span></a><div class="nav-links"><a href="/#use-cases">Use Cases</a><a href="/#frameworks">Frameworks</a><a href="https://github.com/meet-bhagdev/valkeyforai/tree/main" target="_blank">GitHub</a></div></div></nav>
 <article>
 <div class="breadcrumb"><a href="/">Home</a> → <a href="/cookbooks/haystack/">Haystack</a> → 01 Getting Started</div>
 <div class="meta"><span class="diff-easy">Beginner</span><span class="lang">Python</span><span class="lang">~10 min</span></div>
-
-<h1>Getting <span class="gradient">Started</span></h1>
+<h1>Getting Started with Haystack + Valkey</h1>
 <p class="lead">Connect Haystack to Valkey, store documents with embeddings, and run your first vector similarity search - all in under 10 minutes.</p>
 
 <p>Haystack is a framework for building RAG pipelines and search applications. Valkey replaces external vector databases with a single in-memory store that handles both document storage and similarity search, cutting infrastructure complexity and query latency.</p>
-
 <h2>Prerequisites</h2>
 <ul>
 <li>Docker installed (or a running Valkey instance)</li>
 <li>Python 3.10+ (required by <code>haystack-ai</code> and <code>valkey-haystack</code>)</li>
 </ul>
-
 <h2>Step 1: Start Valkey</h2>
 <p>Vector search requires the <code>valkey-bundle</code> image, which includes the valkey-search module:</p>
-<pre><code>docker run -d --name valkey -p 6379:6379 valkey/valkey-bundle:latest</code></pre>
-<p>Verify it's running and the search module is loaded:</p>
-<pre><code>docker exec valkey valkey-cli MODULE LIST
-<span class="comment"># should include: name search</span></code></pre>
-
-<div class="callout">
-<p><strong>Note:</strong> On first run you'll see <code>Error executing command: Index not found</code> - this is expected. The document store checks for an existing index, doesn't find one, then creates it automatically when you write your first documents.</p>
-</div>
-
+<pre><code class="language-bash">docker run -d --name valkey -p 6379:6379 valkey/valkey-bundle:latest
+</code></pre>
+<p>Verify it&#39;s running and the search module is loaded:</p>
+<pre><code class="language-bash">docker exec valkey valkey-cli MODULE LIST
+# should include: name search
+</code></pre>
+<blockquote>
+<p><strong>Note:</strong> On first run you&#39;ll see <code>Error executing command: Index not found</code> - this is expected. The document store checks for an existing index, doesn&#39;t find one, then creates it automatically when you write your first documents.</p>
+</blockquote>
 <h2>Step 2: Install Dependencies</h2>
-<pre><code>pip install haystack-ai
+<pre><code class="language-bash">pip install haystack-ai
 pip install valkey-haystack
-pip install sentence-transformers</code></pre>
-
+pip install sentence-transformers
+</code></pre>
 <p>The <code>valkey-haystack</code> package provides <code>ValkeyDocumentStore</code> and <code>ValkeyEmbeddingRetriever</code> as first-class Haystack components.</p>
-
 <h2>Step 3: Connect to ValkeyDocumentStore</h2>
-<pre><code><span class="keyword">from</span> haystack_integrations.document_stores.valkey <span class="keyword">import</span> ValkeyDocumentStore
+<pre><code class="language-python">from haystack_integrations.document_stores.valkey import ValkeyDocumentStore
 
 document_store = ValkeyDocumentStore(
-    nodes_list=[(<span class="string">"localhost"</span>, <span class="num">6379</span>)],
-    index_name=<span class="string">"my_documents"</span>,
-    embedding_dim=<span class="num">768</span>,        <span class="comment"># must match your embedding model</span>
-    distance_metric=<span class="string">"cosine"</span>, <span class="comment"># cosine | l2 | ip</span>
+    nodes_list=[(&quot;localhost&quot;, 6379)],
+    index_name=&quot;my_documents&quot;,
+    embedding_dim=768,        # must match your embedding model
+    distance_metric=&quot;cosine&quot;, # cosine | l2 | ip
 )
 
-<span class="func">print</span>(document_store.count_documents())  <span class="comment"># 0</span></code></pre>
-
+print(document_store.count_documents())  # 0
+</code></pre>
 <h2>Step 4: Write Documents</h2>
-<pre><code><span class="keyword">from</span> haystack <span class="keyword">import</span> Document
+<pre><code class="language-python">from haystack import Document
 
 docs = [
-    Document(content=<span class="string">"Valkey is a high-performance in-memory data store."</span>),
-    Document(content=<span class="string">"Haystack is an open-source LLM framework by deepset."</span>),
-    Document(content=<span class="string">"Vector search finds semantically similar documents."</span>),
+    Document(content=&quot;Valkey is a high-performance in-memory data store.&quot;),
+    Document(content=&quot;Haystack is an open-source LLM framework by deepset.&quot;),
+    Document(content=&quot;Vector search finds semantically similar documents.&quot;),
 ]
 
 document_store.write_documents(docs)
-<span class="func">print</span>(document_store.count_documents())  <span class="comment"># 3</span></code></pre>
-
+print(document_store.count_documents())  # 3
+</code></pre>
 <h2>Step 5: Embed and Index Documents</h2>
 <p>Documents need embeddings before they can be searched by similarity. Use a <code>DocumentEmbedder</code> to generate and store them:</p>
-<pre><code><span class="keyword">from</span> haystack.components.embedders <span class="keyword">import</span> SentenceTransformersDocumentEmbedder
+<pre><code class="language-python">from haystack.components.embedders import SentenceTransformersDocumentEmbedder
 
 doc_embedder = SentenceTransformersDocumentEmbedder(
-    model=<span class="string">"sentence-transformers/all-mpnet-base-v2"</span>  <span class="comment"># 768-dim, matches embedding_dim above</span>
+    model=&quot;sentence-transformers/all-mpnet-base-v2&quot;  # 768-dim, matches embedding_dim above
 )
 doc_embedder.warm_up()
 
-docs_with_embeddings = doc_embedder.run(docs)[<span class="string">"documents"</span>]
-document_store.write_documents(docs_with_embeddings, policy=<span class="string">"overwrite"</span>)</code></pre>
-
+docs_with_embeddings = doc_embedder.run(docs)[&quot;documents&quot;]
+document_store.write_documents(docs_with_embeddings, policy=&quot;overwrite&quot;)
+</code></pre>
 <h2>Step 6: Run a Similarity Search</h2>
-<pre><code><span class="keyword">from</span> haystack.components.embedders <span class="keyword">import</span> SentenceTransformersTextEmbedder
-<span class="keyword">from</span> haystack_integrations.components.retrievers.valkey <span class="keyword">import</span> ValkeyEmbeddingRetriever
+<pre><code class="language-python">from haystack.components.embedders import SentenceTransformersTextEmbedder
+from haystack_integrations.components.retrievers.valkey import ValkeyEmbeddingRetriever
 
 text_embedder = SentenceTransformersTextEmbedder(
-    model=<span class="string">"sentence-transformers/all-mpnet-base-v2"</span>
+    model=&quot;sentence-transformers/all-mpnet-base-v2&quot;
 )
 text_embedder.warm_up()
 
-retriever = ValkeyEmbeddingRetriever(document_store=document_store, top_k=<span class="num">2</span>)
+retriever = ValkeyEmbeddingRetriever(document_store=document_store, top_k=2)
 
-query = <span class="string">"What is Valkey used for?"</span>
-query_embedding = text_embedder.run(query)[<span class="string">"embedding"</span>]
+query = &quot;What is Valkey used for?&quot;
+query_embedding = text_embedder.run(query)[&quot;embedding&quot;]
 results = retriever.run(query_embedding=query_embedding)
 
-<span class="keyword">for</span> doc <span class="keyword">in</span> results[<span class="string">"documents"</span>]:
-    <span class="func">print</span>(<span class="string">f"Score: {doc.score:.3f} | {doc.content}"</span>)</code></pre>
-
+for doc in results[&quot;documents&quot;]:
+    print(f&quot;Score: {doc.score:.3f} | {doc.content}&quot;)
+</code></pre>
 <p>Output:</p>
 <pre><code>Score: 0.921 | Valkey is a high-performance in-memory data store.
-Score: 0.743 | Vector search finds semantically similar documents.</code></pre>
-
-<h2>How It Works</h2>
-<div class="callout">
-<p><strong>Key Insight:</strong> <code>ValkeyDocumentStore</code> stores each document's embedding as a Valkey hash and builds a vector index using Valkey's native vector search. Queries are single-hop - embed the query, run KNN against the index, get ranked results back. No external vector DB needed.</p>
-</div>
-
+Score: 0.743 | Vector search finds semantically similar documents.
+</code></pre>
+<h2>How It Works Under the Hood</h2>
+<p><code>ValkeyDocumentStore</code> stores each document&#39;s embedding as a Valkey hash and builds a vector index using Valkey&#39;s native vector search. Queries are single-hop - embed the query, run KNN against the index, get ranked results back. No external vector DB needed.</p>
 <table>
-<tr><th>Component</th><th>Role</th></tr>
-<tr><td><code>ValkeyDocumentStore</code></td><td>Stores documents + embeddings, manages the vector index</td></tr>
-<tr><td><code>SentenceTransformersDocumentEmbedder</code></td><td>Generates embeddings for documents at index time</td></tr>
-<tr><td><code>SentenceTransformersTextEmbedder</code></td><td>Generates embedding for the query at search time</td></tr>
-<tr><td><code>ValkeyEmbeddingRetriever</code></td><td>Runs KNN search and returns ranked documents</td></tr>
-</table>
+<thead>
+<tr>
+<th>Component</th>
+<th>Role</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>ValkeyDocumentStore</code></td>
+<td>Stores documents + embeddings, manages the vector index</td>
+</tr>
+<tr>
+<td><code>SentenceTransformersDocumentEmbedder</code></td>
+<td>Generates embeddings for documents at index time</td>
+</tr>
+<tr>
+<td><code>SentenceTransformersTextEmbedder</code></td>
+<td>Generates embedding for the query at search time</td>
+</tr>
+<tr>
+<td><code>ValkeyEmbeddingRetriever</code></td>
+<td>Runs KNN search and returns ranked documents</td>
+</tr>
+</tbody></table>
+
 
 <div class="nav-prev-next">
 <div></div>
-<a href="02-rag-pipeline.html" class="next">
-<span class="label">Next →</span>
-<span class="title">02 - RAG Pipeline</span>
-</a>
+<a href="02-rag-pipeline.html" class="next"><span class="label">Next →</span><span class="title">02 - RAG Pipeline</span></a>
 </div>
 </article>
+<button class="theme-toggle" onclick="toggleTheme()" aria-label="Toggle theme"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/></svg></button>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+<script>hljs.highlightAll();</script>
+<script>function toggleTheme(){var b=document.body,l=b.classList.toggle("light");localStorage.setItem("theme",l?"light":"dark")}(function(){if(localStorage.getItem("theme")==="light")document.body.classList.add("light")})()</script>
 </body>
 </html>

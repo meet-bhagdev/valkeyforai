@@ -6,18 +6,27 @@
 <title>02 - RAG Pipeline with Haystack + Valkey - Valkey for AI</title>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="../cookbook.css">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css">
+<style>
+body.light .nav{background:rgba(255,255,255,.9)!important}
+body.light pre{background:rgba(0,0,0,.03)!important;border-color:rgba(0,0,0,.08)!important}
+body.light code{color:#1d1d1f}
+body.light .callout{background:rgba(0,0,0,.02);border-color:rgba(0,0,0,.08)}
+body.light table{border-color:rgba(0,0,0,.08)}
+body.light th{background:rgba(0,0,0,.04)}
+body.light td{border-color:rgba(0,0,0,.06)}
+body.light{--bg:#fff;--bg-elevated:#f5f5f7;--bg-card:rgba(0,0,0,.03);--bg-card-hover:rgba(0,0,0,.06);--brd:rgba(0,0,0,.08);--t1:#1d1d1f;--t2:rgba(29,29,31,.6);--t3:rgba(29,29,31,.4)}
+.theme-toggle{background:rgba(128,128,128,.12);border:1px solid rgba(128,128,128,.2);border-radius:100px;width:36px;height:36px;display:flex;align-items:center;justify-content:center;cursor:pointer;padding:0;position:fixed;top:18px;right:24px;z-index:1001}
+pre{position:relative}
+pre code.hljs{background:transparent!important;padding:0}
+</style>
 </head>
 <body>
-<nav class="nav"><div class="nav-inner">
-<a href="/" class="nav-logo"><img src="/valkey-logo.svg" alt="Valkey"><span class="accent">for ai</span></a>
-<div class="nav-links"><a href="/#use-cases">Use Cases</a><a href="/cookbooks/haystack/">Cookbooks</a><a href="https://github.com/meet-bhagdev/valkeyforai/tree/main" target="_blank">GitHub</a></div>
-</div></nav>
-
+<nav class="nav"><div class="nav-inner"><a href="/" class="nav-logo"><img src="/valkey-logo.svg" alt="Valkey"><span class="accent">for ai</span></a><div class="nav-links"><a href="/#use-cases">Use Cases</a><a href="/#frameworks">Frameworks</a><a href="https://github.com/meet-bhagdev/valkeyforai/tree/main" target="_blank">GitHub</a></div></div></nav>
 <article>
 <div class="breadcrumb"><a href="/">Home</a> → <a href="/cookbooks/haystack/">Haystack</a> → 02 RAG Pipeline</div>
-<div class="meta"><span class="diff-mid">Intermediate</span><span class="lang">Python</span><span class="lang">~20 min</span></div>
-
-<h1>RAG <span class="gradient">Pipeline</span></h1>
+<div class="meta"><span class="diff-medium">Intermediate</span><span class="lang">Python</span><span class="lang">~20 min</span></div>
+<h1>RAG Pipeline with Haystack + Valkey</h1>
 <p class="lead">Build a full retrieval-augmented generation pipeline with Valkey as the vector store. Embed your documents once, then answer questions grounded in your data - not the LLM's training set.</p>
 
 <h2>How RAG Works</h2>
@@ -25,136 +34,167 @@
   → embed question
   → find similar docs in Valkey (KNN)
   → inject docs into prompt
-  → LLM generates grounded answer</code></pre>
-
+  → LLM generates grounded answer
+</code></pre>
 <p>Valkey handles the retrieval step - sub-millisecond KNN over your document embeddings.</p>
-
 <h2>Step 1: Indexing Pipeline</h2>
 <p>Run this once to embed and store your documents:</p>
-<pre><code><span class="keyword">from</span> haystack <span class="keyword">import</span> Pipeline, Document
-<span class="keyword">from</span> haystack.components.embedders <span class="keyword">import</span> SentenceTransformersDocumentEmbedder
-<span class="keyword">from</span> haystack.components.writers <span class="keyword">import</span> DocumentWriter
-<span class="keyword">from</span> haystack_integrations.document_stores.valkey <span class="keyword">import</span> ValkeyDocumentStore
+<pre><code class="language-python">from haystack import Pipeline, Document
+from haystack.components.embedders import SentenceTransformersDocumentEmbedder
+from haystack.components.writers import DocumentWriter
+from haystack_integrations.document_stores.valkey import ValkeyDocumentStore
 
 document_store = ValkeyDocumentStore(
-    nodes_list=[(<span class="string">"localhost"</span>, <span class="num">6379</span>)],
-    index_name=<span class="string">"rag_docs"</span>,
-    embedding_dim=<span class="num">768</span>,
-    distance_metric=<span class="string">"cosine"</span>,
+    nodes_list=[(&quot;localhost&quot;, 6379)],
+    index_name=&quot;rag_docs&quot;,
+    embedding_dim=768,
+    distance_metric=&quot;cosine&quot;,
 )
 
 indexing_pipeline = Pipeline()
 indexing_pipeline.add_component(
-    <span class="string">"embedder"</span>,
-    SentenceTransformersDocumentEmbedder(model=<span class="string">"sentence-transformers/all-mpnet-base-v2"</span>)
+    &quot;embedder&quot;,
+    SentenceTransformersDocumentEmbedder(model=&quot;sentence-transformers/all-mpnet-base-v2&quot;)
 )
-indexing_pipeline.add_component(<span class="string">"writer"</span>, DocumentWriter(document_store=document_store))
-indexing_pipeline.connect(<span class="string">"embedder.documents"</span>, <span class="string">"writer.documents"</span>)
+indexing_pipeline.add_component(&quot;writer&quot;, DocumentWriter(document_store=document_store))
+indexing_pipeline.connect(&quot;embedder.documents&quot;, &quot;writer.documents&quot;)
 
-<span class="comment"># Your documents - swap this for file loaders, web crawlers, etc.</span>
+# Your documents - swap this for file loaders, web crawlers, etc.
 docs = [
-    Document(content=<span class="string">"Valkey supports vector search natively via its module system."</span>),
-    Document(content=<span class="string">"The ValkeyDocumentStore integrates directly with Haystack pipelines."</span>),
-    Document(content=<span class="string">"Cosine similarity measures the angle between two embedding vectors."</span>),
-    Document(content=<span class="string">"RAG grounds LLM responses in retrieved facts, reducing hallucinations."</span>),
-    Document(content=<span class="string">"Haystack pipelines are composable - swap any component without rewriting the rest."</span>),
+    Document(content=&quot;Valkey supports vector search natively via its module system.&quot;),
+    Document(content=&quot;The ValkeyDocumentStore integrates directly with Haystack pipelines.&quot;),
+    Document(content=&quot;Cosine similarity measures the angle between two embedding vectors.&quot;),
+    Document(content=&quot;RAG grounds LLM responses in retrieved facts, reducing hallucinations.&quot;),
+    Document(content=&quot;Haystack pipelines are composable - swap any component without rewriting the rest.&quot;),
 ]
 
-indexing_pipeline.run({<span class="string">"embedder"</span>: {<span class="string">"documents"</span>: docs}})
-<span class="func">print</span>(<span class="string">f"Indexed {document_store.count_documents()} documents"</span>)</code></pre>
-
+indexing_pipeline.run({&quot;embedder&quot;: {&quot;documents&quot;: docs}})
+print(f&quot;Indexed {document_store.count_documents()} documents&quot;)
+</code></pre>
 <h2>Step 2: Query Pipeline</h2>
-<p>Wire together embedding → retrieval → prompt → LLM:</p>
-<pre><code><span class="keyword">from</span> haystack <span class="keyword">import</span> Pipeline
-<span class="keyword">from</span> haystack.utils <span class="keyword">import</span> Secret
-<span class="keyword">from</span> haystack.dataclasses <span class="keyword">import</span> ChatMessage
-<span class="keyword">from</span> haystack.components.embedders <span class="keyword">import</span> SentenceTransformersTextEmbedder
-<span class="keyword">from</span> haystack.components.builders <span class="keyword">import</span> ChatPromptBuilder
-<span class="keyword">from</span> haystack.components.generators.chat <span class="keyword">import</span> OpenAIChatGenerator
-<span class="keyword">from</span> haystack_integrations.components.retrievers.valkey <span class="keyword">import</span> ValkeyEmbeddingRetriever
+<p>Wire together embedding, retrieval, prompt building, and LLM generation:</p>
+<pre><code class="language-python">from haystack import Pipeline
+from haystack.utils import Secret
+from haystack.dataclasses import ChatMessage
+from haystack.components.embedders import SentenceTransformersTextEmbedder
+from haystack.components.builders import ChatPromptBuilder
+from haystack.components.generators.chat import OpenAIChatGenerator
+from haystack_integrations.components.retrievers.valkey import ValkeyEmbeddingRetriever
 
 prompt_template = [
     ChatMessage.from_system(
-        <span class="string">"Answer the question using only the provided context. "</span>
-        <span class="string">"If the context doesn't contain the answer, say 'I don't know'."</span>
+        &quot;Answer the question using only the provided context. &quot;
+        &quot;If the context doesn&#39;t contain the answer, say &#39;I don&#39;t know&#39;.&quot;
     ),
     ChatMessage.from_user(
-        <span class="string">"Context:\n{% for doc in documents %}{{ doc.content }}\n{% endfor %}\n"</span>
-        <span class="string">"Question: {{query}}"</span>
+        &quot;Context:\n{% for doc in documents %}{{ doc.content }}\n{% endfor %}\n&quot;
+        &quot;Question: {{query}}&quot;
     ),
 ]
 
 query_pipeline = Pipeline()
 query_pipeline.add_component(
-    <span class="string">"text_embedder"</span>,
-    SentenceTransformersTextEmbedder(model=<span class="string">"sentence-transformers/all-mpnet-base-v2"</span>)
+    &quot;text_embedder&quot;,
+    SentenceTransformersTextEmbedder(model=&quot;sentence-transformers/all-mpnet-base-v2&quot;)
 )
 query_pipeline.add_component(
-    <span class="string">"retriever"</span>,
-    ValkeyEmbeddingRetriever(document_store=document_store, top_k=<span class="num">3</span>)
+    &quot;retriever&quot;,
+    ValkeyEmbeddingRetriever(document_store=document_store, top_k=3)
 )
 query_pipeline.add_component(
-    <span class="string">"prompt_builder"</span>,
-    ChatPromptBuilder(template=prompt_template, required_variables=[<span class="string">"query"</span>, <span class="string">"documents"</span>])
+    &quot;prompt_builder&quot;,
+    ChatPromptBuilder(template=prompt_template, required_variables=[&quot;query&quot;, &quot;documents&quot;])
 )
 query_pipeline.add_component(
-    <span class="string">"generator"</span>,
+    &quot;generator&quot;,
     OpenAIChatGenerator(
-        api_key=Secret.from_env_var(<span class="string">"OPENAI_API_KEY"</span>),
-        model=<span class="string">"gpt-4o"</span>
+        api_key=Secret.from_env_var(&quot;OPENAI_API_KEY&quot;),
+        model=&quot;gpt-4o&quot;
     )
 )
 
-query_pipeline.connect(<span class="string">"text_embedder.embedding"</span>, <span class="string">"retriever.query_embedding"</span>)
-query_pipeline.connect(<span class="string">"retriever.documents"</span>, <span class="string">"prompt_builder.documents"</span>)
-query_pipeline.connect(<span class="string">"prompt_builder.messages"</span>, <span class="string">"generator.messages"</span>)</code></pre>
-
+query_pipeline.connect(&quot;text_embedder.embedding&quot;, &quot;retriever.query_embedding&quot;)
+query_pipeline.connect(&quot;retriever.documents&quot;, &quot;prompt_builder.documents&quot;)
+query_pipeline.connect(&quot;prompt_builder.messages&quot;, &quot;generator.messages&quot;)
+</code></pre>
 <h2>Step 3: Ask a Question</h2>
-<pre><code>query = <span class="string">"How does Valkey integrate with Haystack?"</span>
+<pre><code class="language-python">query = &quot;How does Valkey integrate with Haystack?&quot;
 
 result = query_pipeline.run({
-    <span class="string">"text_embedder"</span>: {<span class="string">"text"</span>: query},
-    <span class="string">"prompt_builder"</span>: {<span class="string">"query"</span>: query},
+    &quot;text_embedder&quot;: {&quot;text&quot;: query},
+    &quot;prompt_builder&quot;: {&quot;query&quot;: query},
 })
 
-<span class="func">print</span>(result[<span class="string">"generator"</span>][<span class="string">"replies"</span>][<span class="num">0</span>].content)</code></pre>
-
+print(result[&quot;generator&quot;][&quot;replies&quot;][0].content)
+</code></pre>
 <p>Output:</p>
 <pre><code>The ValkeyDocumentStore integrates directly with Haystack pipelines,
 allowing you to store document embeddings in Valkey and retrieve them
-using the ValkeyEmbeddingRetriever component.</code></pre>
-
+using the ValkeyEmbeddingRetriever component.
+</code></pre>
 <h2>Pipeline Architecture</h2>
-<div class="callout">
-<p><strong>Key Insight:</strong> The indexing and query pipelines are intentionally separate. You index once (or on a schedule), then query thousands of times. Valkey's in-memory KNN means retrieval adds ~1ms to your total latency - negligible compared to the LLM call.</p>
-</div>
-
+<p>The indexing and query pipelines are intentionally separate. You index once (or on a schedule), then query thousands of times. Valkey&#39;s in-memory KNN means retrieval adds ~1ms to your total latency - negligible compared to the LLM call.</p>
 <table>
-<tr><th>Stage</th><th>Component</th><th>What it does</th></tr>
-<tr><td>Index</td><td><code>SentenceTransformersDocumentEmbedder</code></td><td>Generates 768-dim embeddings for each doc</td></tr>
-<tr><td>Index</td><td><code>DocumentWriter</code></td><td>Writes docs + embeddings to Valkey</td></tr>
-<tr><td>Query</td><td><code>SentenceTransformersTextEmbedder</code></td><td>Embeds the user's question</td></tr>
-<tr><td>Query</td><td><code>ValkeyEmbeddingRetriever</code></td><td>KNN search - returns top-k similar docs</td></tr>
-<tr><td>Query</td><td><code>ChatPromptBuilder</code></td><td>Injects retrieved docs into the prompt</td></tr>
-<tr><td>Query</td><td><code>OpenAIChatGenerator</code></td><td>Generates the final grounded answer</td></tr>
-</table>
-
+<thead>
+<tr>
+<th>Stage</th>
+<th>Component</th>
+<th>What it does</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>Index</td>
+<td><code>SentenceTransformersDocumentEmbedder</code></td>
+<td>Generates 768-dim embeddings for each doc</td>
+</tr>
+<tr>
+<td>Index</td>
+<td><code>DocumentWriter</code></td>
+<td>Writes docs + embeddings to Valkey</td>
+</tr>
+<tr>
+<td>Query</td>
+<td><code>SentenceTransformersTextEmbedder</code></td>
+<td>Embeds the user&#39;s question</td>
+</tr>
+<tr>
+<td>Query</td>
+<td><code>ValkeyEmbeddingRetriever</code></td>
+<td>KNN search - returns top-k similar docs</td>
+</tr>
+<tr>
+<td>Query</td>
+<td><code>ChatPromptBuilder</code></td>
+<td>Injects retrieved docs into the prompt</td>
+</tr>
+<tr>
+<td>Query</td>
+<td><code>OpenAIChatGenerator</code></td>
+<td>Generates the final grounded answer</td>
+</tr>
+</tbody></table>
 <h2>Swap the Embedding Model</h2>
 <p>Any Haystack-compatible embedder works. Just keep <code>embedding_dim</code> consistent between the document store and both embedders:</p>
-<pre><code><span class="comment"># OpenAI embeddings (1536-dim)</span>
-<span class="keyword">from</span> haystack.components.embedders <span class="keyword">import</span> OpenAIDocumentEmbedder, OpenAITextEmbedder
+<pre><code class="language-python"># OpenAI embeddings (1536-dim)
+from haystack.components.embedders import OpenAIDocumentEmbedder, OpenAITextEmbedder
 
 document_store = ValkeyDocumentStore(
-    nodes_list=[(<span class="string">"localhost"</span>, <span class="num">6379</span>)],
-    index_name=<span class="string">"rag_docs_openai"</span>,
-    embedding_dim=<span class="num">1536</span>,  <span class="comment"># text-embedding-3-small</span>
-    distance_metric=<span class="string">"cosine"</span>,
-)</code></pre>
+    nodes_list=[(&quot;localhost&quot;, 6379)],
+    index_name=&quot;rag_docs_openai&quot;,
+    embedding_dim=1536,  # text-embedding-3-small
+    distance_metric=&quot;cosine&quot;,
+)
+</code></pre>
+
 
 <div class="nav-prev-next">
-<a href="01-getting-started.html"><span class="label">← Previous</span><span class="title">01 - Getting Started</span></a>
+<a href="01-getting-started.html" class="prev"><span class="label">← Previous</span><span class="title">01 - Getting Started</span></a>
 <div></div>
 </div>
 </article>
+<button class="theme-toggle" onclick="toggleTheme()" aria-label="Toggle theme"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/></svg></button>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+<script>hljs.highlightAll();</script>
+<script>function toggleTheme(){var b=document.body,l=b.classList.toggle("light");localStorage.setItem("theme",l?"light":"dark")}(function(){if(localStorage.getItem("theme")==="light")document.body.classList.add("light")})()</script>
 </body>
 </html>

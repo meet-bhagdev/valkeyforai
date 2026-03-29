@@ -45,24 +45,6 @@
       "prev": {
         "file": "02-memory-storage.html",
         "title": "02 - Memory Storage"
-      },
-      "next": {
-        "file": "04-deploy-elasticache.html",
-        "title": "04 - Deploy"
-      }
-    },
-    {
-      "num": "04",
-      "source": "04-deploy-elasticache.md",
-      "output": "04-deploy-elasticache.html",
-      "title": "Deploy with ElastiCache",
-      "h1": "Deploy with ElastiCache",
-      "breadcrumb": "Deploy",
-      "difficulty": "Advanced",
-      "time": "20 min",
-      "prev": {
-        "file": "03-agent-memory.html",
-        "title": "03 - Agent Memory"
       }
     }
   ]

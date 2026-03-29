@@ -63,24 +63,6 @@
       "prev": {
         "file": "03-semantic-search.html",
         "title": "03 - Semantic Search"
-      },
-      "next": {
-        "file": "05-deploy-elasticache.html",
-        "title": "05 - Deploy"
-      }
-    },
-    {
-      "num": "05",
-      "source": "05-deploy-elasticache.md",
-      "output": "05-deploy-elasticache.html",
-      "title": "Deploy with ElastiCache",
-      "h1": "Deploy with ElastiCache",
-      "breadcrumb": "Deploy",
-      "difficulty": "Advanced",
-      "time": "20 min",
-      "prev": {
-        "file": "04-full-agent.html",
-        "title": "04 - Full Agent"
       }
     }
   ]

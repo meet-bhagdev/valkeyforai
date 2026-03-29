@@ -1,0 +1,54 @@
+{
+  "trackName": "Strands",
+  "cookbooks": [
+    {
+      "num": "01",
+      "source": "01-getting-started.md",
+      "output": "01-getting-started.html",
+      "title": "Getting Started with Strands + Valkey",
+      "h1": "Getting Started with Strands + Valkey",
+      "breadcrumb": "Getting Started",
+      "lead": "Use the official strands-valkey-session-manager community package to give your Strands agent persistent conversation history, session metadata, and agent state - backed by Valkey.",
+      "difficulty": "Beginner",
+      "time": "15 min",
+      "next": {
+        "file": "02-session-internals.html",
+        "title": "02 - Managing Session Data"
+      }
+    },
+    {
+      "num": "02",
+      "source": "02-session-internals.md",
+      "output": "02-session-internals.html",
+      "title": "Managing Session Data",
+      "h1": "Managing Session Data",
+      "breadcrumb": "Session Data",
+      "lead": "Understand exactly what strands-valkey-session-manager stores in Valkey - the key structure, the shape of each object, and how to use the built-in API methods to inspect and manage session data.",
+      "difficulty": "Intermediate",
+      "time": "20 min",
+      "prev": {
+        "file": "01-getting-started.html",
+        "title": "01 - Getting Started"
+      },
+      "next": {
+        "file": "03-managing-your-session-store.html",
+        "title": "03 - Managing Your Session Store"
+      }
+    },
+    {
+      "num": "03",
+      "source": "03-managing-your-session-store.md",
+      "output": "03-managing-your-session-store.html",
+      "title": "Managing Your ValkeySession Store",
+      "h1": "Managing Your ValkeySession Store",
+      "breadcrumb": "Session Store",
+      "lead": "Delete sessions on logout, query raw keys to see exactly what's in Valkey, and share a single session across multiple agents in an orchestrator pattern.",
+      "difficulty": "Intermediate",
+      "time": "15 min",
+      "prev": {
+        "file": "02-session-internals.html",
+        "title": "02 - Managing Session Data"
+      }
+    }
+  ]
+}

@@ -1,0 +1,35 @@
+{
+  "trackName": "Haystack",
+  "cookbooks": [
+    {
+      "num": "01",
+      "source": "01-getting-started.md",
+      "output": "01-getting-started.html",
+      "title": "Getting Started with Haystack + Valkey",
+      "h1": "Getting Started with Haystack + Valkey",
+      "breadcrumb": "Getting Started",
+      "lead": "Connect Haystack to Valkey, store documents with embeddings, and run your first vector similarity search - all in under 10 minutes.",
+      "difficulty": "Beginner",
+      "time": "10 min",
+      "next": {
+        "file": "02-rag-pipeline.html",
+        "title": "02 - RAG Pipeline"
+      }
+    },
+    {
+      "num": "02",
+      "source": "02-rag-pipeline.md",
+      "output": "02-rag-pipeline.html",
+      "title": "RAG Pipeline with Haystack + Valkey",
+      "h1": "RAG Pipeline with Haystack + Valkey",
+      "breadcrumb": "RAG Pipeline",
+      "lead": "Build a full retrieval-augmented generation pipeline with Valkey as the vector store. Embed your documents once, then answer questions grounded in your data - not the LLM's training set.",
+      "difficulty": "Intermediate",
+      "time": "20 min",
+      "prev": {
+        "file": "01-getting-started.html",
+        "title": "01 - Getting Started"
+      }
+    }
+  ]
+}
