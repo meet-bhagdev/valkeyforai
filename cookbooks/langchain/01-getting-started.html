@@ -30,7 +30,8 @@ pre code.hljs{background:transparent!important;padding:0}
 
 
 <h2>What is LangGraph + Valkey?</h2>
-<p><a href="https://github.com/langchain-ai/langgraph">LangGraph</a> agents are stateless by default - every invocation starts fresh. <code>ValkeySaver</code> from the <code>langgraph-checkpoint-aws</code> package adds persistent checkpointing backed by Valkey:</p>
+<p>LangGraph lets you build multi-step AI agents with branching logic and tool use. The problem: if your agent crashes mid-conversation or you restart your server, all state is lost. Valkey stores checkpoints after every step, so agents pick up exactly where they left off.</p>
+<p><a href="https://github.com/langchain-ai/langgraph">LangGraph</a> agents are stateless by default. <code>ValkeySaver</code> from the <code>langgraph-checkpoint-aws</code> package adds persistent checkpointing backed by Valkey:</p>
 <ul>
 <li><strong>Sub-millisecond reads</strong> - checkpoint retrieval in ~0.1ms</li>
 <li><strong>Atomic writes</strong> - no partial state corruption</li>

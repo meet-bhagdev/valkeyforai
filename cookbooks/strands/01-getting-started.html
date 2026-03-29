@@ -22,6 +22,8 @@
 
 <p>The <code>strands-valkey-session-manager</code> package provides a ready-to-use <code>ValkeySessionManager</code> that plugs directly into Strands' <code>Agent(session_manager=...)</code> parameter. No custom implementation needed.</p>
 
+<p>Strands agents are stateless by default. Without a session manager, every conversation starts from scratch. Valkey stores the full conversation history, agent state, and tool results so your agent remembers context across requests and can resume interrupted workflows.</p>
+
 <h2>What Gets Stored</h2>
 <p>The session manager persists three types of data to Valkey:</p>
 <table>

@@ -1,6 +1,8 @@
 ## What is CrewAI + Valkey?
 
-[CrewAI](https://github.com/crewAIInc/crewAI) is a framework for orchestrating multi-agent AI systems. Agents need persistent memory to learn across executions. Valkey provides the memory backend:
+CrewAI lets you build teams of AI agents that collaborate on tasks. The problem: agents forget everything between runs. Valkey gives them a shared memory that persists across executions, so your code review agent remembers past vulnerabilities and your research agent builds on previous findings.
+
+[CrewAI](https://github.com/crewAIInc/crewAI) provides the agent orchestration, Valkey provides the memory backend:
 
   * **Sub-millisecond reads** - memory recall in ~0.1ms via GLIDE
   * **Vector search** - `FT.SEARCH` with HNSW for semantic recall
