@@ -58,10 +58,10 @@ docker exec -it valkey valkey-cli ping
 <h2>Step 3: Store Document Chunks</h2>
 <p>Store your document chunks as hashes with their embeddings.</p>
 <pre><code class="language-python"># Python example
-import redis
+import valkey
 import numpy as np
 
-client = redis.Redis(host=&#39;localhost&#39;, port=6379)
+client = valkey.Valkey(host=&#39;localhost&#39;, port=6379)
 
 # Generate embedding (use your embedding provider)
 embedding = get_embedding(&quot;Your document text here...&quot;)
@@ -93,13 +93,13 @@ print(f&quot;Found {results[0]} results&quot;)
 </code></pre>
 <h2>Step 5: Complete Python Example</h2>
 <p>Here&#39;s a full working example with OpenAI embeddings:</p>
-<pre><code class="language-python">import redis
+<pre><code class="language-python">import valkey
 import numpy as np
 from openai import OpenAI
 
 # Initialize clients
 openai = OpenAI()
-vk = redis.Redis(host=&#39;localhost&#39;, port=6379, decode_responses=False)
+vk = valkey.Valkey(host=&#39;localhost&#39;, port=6379, decode_responses=False)
 
 def get_embedding(text):
     response = openai.embeddings.create(

@@ -42,10 +42,10 @@ Store your document chunks as hashes with their embeddings.
 
 ```python
 # Python example
-import redis
+import valkey
 import numpy as np
 
-client = redis.Redis(host='localhost', port=6379)
+client = valkey.Valkey(host='localhost', port=6379)
 
 # Generate embedding (use your embedding provider)
 embedding = get_embedding("Your document text here...")
@@ -85,13 +85,13 @@ print(f"Found {results[0]} results")
 Here's a full working example with OpenAI embeddings:
 
 ```python
-import redis
+import valkey
 import numpy as np
 from openai import OpenAI
 
 # Initialize clients
 openai = OpenAI()
-vk = redis.Redis(host='localhost', port=6379, decode_responses=False)
+vk = valkey.Valkey(host='localhost', port=6379, decode_responses=False)
 
 def get_embedding(text):
     response = openai.embeddings.create(

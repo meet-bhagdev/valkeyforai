@@ -21,9 +21,9 @@ The simplest pattern — fetch all features for one entity:
 ### Raw Valkey: HGETALL
 
 ```python
-import redis
+import valkey
 
-client = redis.Redis(host="localhost", port=6379, decode_responses=True)
+client = valkey.Valkey(host="localhost", port=6379, decode_responses=True)
 
 # Fetch all features for user_123
 raw = client.hgetall("fs:v1:user_profile:user_123")

@@ -37,14 +37,14 @@ pre code.hljs{background:transparent!important;padding:0}
 #  Query    → OpenAI embed → FT.SEARCH idx &quot;*=&gt;[KNN 5 @embedding $vec]&quot;
 </code></pre>
 <h2>Step 1: Setup</h2>
-<pre><code class="language-bash">pip install redis openai numpy
+<pre><code class="language-bash">pip install valkey openai numpy
 
 
-import redis
+import valkey
 import numpy as np
 from openai import OpenAI
 
-client = redis.Redis(host=&quot;localhost&quot;, port=6379)
+client = valkey.Valkey(host=&quot;localhost&quot;, port=6379)
 openai_client = OpenAI()  # Uses OPENAI_API_KEY env var
 
 EMBEDDING_MODEL = &quot;text-embedding-3-small&quot;
@@ -62,7 +62,7 @@ EMBEDDING_DIM = 1536  # text-embedding-3-small outputs 1536 dimensions
         &quot;DISTANCE_METRIC&quot;, &quot;COSINE&quot;,
     )
     print(&quot;Index created&quot;)
-except redis.ResponseError:
+except valkey.ResponseError:
     print(&quot;Index already exists&quot;)
 </code></pre>
 <h2>Step 3: Embed and Store Documents</h2>

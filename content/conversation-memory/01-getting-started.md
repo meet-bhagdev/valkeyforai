@@ -22,7 +22,7 @@ Verify it's running:
 
 ```bash
 docker exec valkey valkey-cli PING
-# PONGG
+# PONG
 ```
 
 ## Step 2: Install GLIDE

@@ -17,13 +17,13 @@ Instead of embedding only the last user message, we embed a summary of the full 
 ## Step 1: Create Index with TAG Filter for User/Session
 
 ```python
-import redis
+import valkey
 import numpy as np
 import hashlib
 import time
 from openai import OpenAI
 
-client = redis.Redis(host="localhost", port=6379)
+client = valkey.Valkey(host="localhost", port=6379)
 openai_client = OpenAI()
 EMBEDDING_DIM = 1536
 
@@ -41,7 +41,7 @@ try:
         "DIM", str(EMBEDDING_DIM),
         "DISTANCE_METRIC", "COSINE",
     )
-except redis.ResponseError:
+except valkey.ResponseError:
     pass
 ```
 

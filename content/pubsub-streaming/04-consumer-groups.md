@@ -5,12 +5,12 @@ With plain XREAD, every consumer gets every message. With consumer groups, messa
 ## Step 1: Create a Group
 
 ```python
-import redis
-client = redis.Redis(host="localhost", port=6379, decode_responses=True)
+import valkey
+client = valkey.Valkey(host="localhost", port=6379, decode_responses=True)
 
 try:
     client.xgroup_create("ai:tasks", "workers", id="0", mkstream=True)
-except redis.ResponseError:
+except valkey.ResponseError:
     pass  # Group already exists
 ```
 

@@ -24,11 +24,11 @@ Any service can publish feature updates using `XADD`:
 ### Raw Valkey
 
 ```python
-import redis
+import valkey
 import json
 import time
 
-client = redis.Redis(host="localhost", port=6379, decode_responses=True)
+client = valkey.Valkey(host="localhost", port=6379, decode_responses=True)
 
 # Publish a feature update to the stream
 stream_key = "fs:stream:user_profile"
@@ -181,7 +181,7 @@ For production, use consumer groups to distribute work across multiple workers:
 stream_key = "fs:stream:user_profile"
 try:
     client.xgroup_create(stream_key, "feature_writers", id="0", mkstream=True)
-except redis.ResponseError:
+except valkey.ResponseError:
     pass  # Group already exists
 
 # Consumer reads from the group

@@ -22,17 +22,17 @@ docker run -d --name valkey -p 6379:6379 valkey/valkey:latest
 ## Step 2: Install Dependencies
 
 ```bash
-pip install redis
+pip install valkey
 ```
 
 ## Step 3: Create a Publisher
 
 ```python
-import redis
+import valkey
 import time
 import json
 
-client = redis.Redis(host="localhost", port=6379, decode_responses=True)
+client = valkey.Valkey(host="localhost", port=6379, decode_responses=True)
 
 def publish_message(channel: str, message: dict):
     """Publish a JSON message to a channel."""
@@ -57,10 +57,10 @@ publish_message("ai:events", {
 Run this in a **separate terminal** — subscribers block while waiting for messages:
 
 ```python
-import redis
+import valkey
 import json
 
-client = redis.Redis(host="localhost", port=6379, decode_responses=True)
+client = valkey.Valkey(host="localhost", port=6379, decode_responses=True)
 
 # Create a Pub/Sub object
 pubsub = client.pubsub()

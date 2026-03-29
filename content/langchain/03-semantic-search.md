@@ -80,7 +80,7 @@ for r in results:
 ```python
 # Index creation (once)
 FT.CREATE semantic_cache_idx ON JSON PREFIX 1 "store:semantic_cache:"
-  SCHEMA $.text AS text TEXT
+  SCHEMA $.text AS text TAG
          $.embedding AS embedding VECTOR HNSW 6
            TYPE FLOAT32 DIM 1536 DISTANCE_METRIC COSINE
 
@@ -92,7 +92,7 @@ EXPIRE store:semantic_cache:help-desk:passwords:q1 3600
 FT.SEARCH semantic_cache_idx
   "(*)==>[KNN 3 @embedding $vec AS score]"
   PARAMS 2 vec <binary_vector>
-  SORTBY score ASC LIMIT 0 3
+  LIMIT 0 3
 ```
 
 ## Step 4: HNSW Tuning

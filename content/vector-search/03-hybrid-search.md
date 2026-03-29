@@ -5,10 +5,10 @@ Pure vector search returns the most similar items globally. But often you need t
 ## Step 1: Create an Index with Multiple Field Types
 
 ```python
-import redis
+import valkey
 import numpy as np
 
-client = redis.Redis(host="localhost", port=6379)
+client = valkey.Valkey(host="localhost", port=6379)
 
 def vec_to_bytes(vec):
     return np.array(vec, dtype=np.float32).tobytes()
@@ -26,8 +26,8 @@ try:
         "DIM", "4",
         "DISTANCE_METRIC", "COSINE",
     )
-    print("Index created with TEXT + TAG + NUMERIC + VECTOR")
-except redis.ResponseError as e:
+    print("Index created with TAG + NUMERIC + VECTOR")
+except valkey.ResponseError as e:
     print(f"Index exists: {e}")
 ```
 

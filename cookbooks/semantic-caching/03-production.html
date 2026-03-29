@@ -83,9 +83,9 @@ def evaluate_threshold(test_pairs: list, threshold: float):
     print(f&quot;Threshold {threshold}: hit_rate={hit_rate:.1%}, false_positive_rate={fp_rate:.1%}&quot;)
 </code></pre>
 <h2>Pattern 2: Cache Hit Rate Monitoring</h2>
-<pre><code class="language-python">import redis
+<pre><code class="language-python">import valkey
 
-client = redis.Redis(host=&quot;localhost&quot;, port=6379)
+client = valkey.Valkey(host=&quot;localhost&quot;, port=6379)
 
 def record_cache_event(event_type: str):
     &quot;&quot;&quot;Track cache hits and misses using atomic counters.&quot;&quot;&quot;

@@ -3,13 +3,13 @@
 Before every LLM call, an agent needs to assemble context from multiple sources. This function is the core of context engineering — it gathers everything the LLM needs into a structured prompt.
 
 ```python
-import redis
+import valkey
 import json
 import struct
 import time
 
-client = redis.Redis(host="localhost", port=6379, decode_responses=True)
-client_bin = redis.Redis(host="localhost", port=6379, decode_responses=False)
+client = valkey.Valkey(host="localhost", port=6379, decode_responses=True)
+client_bin = valkey.Valkey(host="localhost", port=6379, decode_responses=False)
 
 def assemble_context(user_id: str, session_id: str, agent_id: str, current_message: str) -> list:
     """Assemble complete context for an LLM call from all 5 sources in Valkey."""

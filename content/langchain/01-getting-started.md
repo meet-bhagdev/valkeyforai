@@ -1,18 +1,15 @@
-## Why Valkey for LangGraph?
+## What is LangGraph + Valkey?
 
-LangGraph agents are stateless by default — every invocation starts fresh. `ValkeySaver` adds persistent checkpointing backed by Valkey:
+[LangGraph](https://github.com/langchain-ai/langgraph) agents are stateless by default — every invocation starts fresh. `ValkeySaver` from the `langgraph-checkpoint-aws` package adds persistent checkpointing backed by Valkey:
 
   * **Sub-millisecond reads** — checkpoint retrieval in ~0.1ms
   * **Atomic writes** — no partial state corruption
   * **Built-in TTL** — sessions auto-expire, no cleanup jobs
   * **ElastiCache ready** — same code works locally and in production
 
-## Prerequisites
-
-  * Docker installed
-  * Python 3.10+
-
 ## Step 1: Start Valkey
+
+Docker installed and Python 3.10+ required.
 
 ```bash
 docker run -d --name valkey -p 6379:6379 valkey/valkey-bundle:latest
@@ -49,7 +46,7 @@ This installs `ValkeySaver`, `ValkeyStore`, `ValkeyCache`, and the Bedrock integ
 }
 ```
 
-**Under the Hood:** `ValkeySaver` uses Valkey JSON (`JSON.SET`) for structured storage and RediSearch (`FT.CREATE`, `FT.SEARCH`) for indexing checkpoints by thread ID and namespace. TTL is applied via `EXPIRE`.
+**Under the Hood:** `ValkeySaver` uses Valkey JSON (`JSON.SET`) for structured storage and `FT.CREATE`/`FT.SEARCH` for indexing checkpoints by thread ID and namespace. TTL is applied via `EXPIRE`.
 
 ## Step 4: Persist a LangGraph Agent
 
@@ -113,16 +110,15 @@ with ValkeySaver.from_conn_string("valkey://localhost:6379") as checkpointer:
         print(cp.metadata)  # Shows previous conversation
 ```
 
-**Valkey Commands Fired:**
+## How It Works Under the Hood
 
-```python
-JSON.SET checkpoint:session-1:__empty__:abc123 $ '{...}'
-EXPIRE checkpoint:session-1:__empty__:abc123 3600
-FT.SEARCH checkpoints_idx '@thread_id:{session-1}' SORTBY ts DESC LIMIT 0 1
-```
+| Operation | Valkey Command | Latency |
+|-----------|---------------|---------|
+| Save checkpoint | `JSON.SET checkpoint:{thread}:{ns}:{id} $ '{...}'` | ~0.2ms |
+| Set TTL | `EXPIRE checkpoint:{thread}:{ns}:{id} 3600` | ~0.1ms |
+| Load latest | `FT.SEARCH checkpoints_idx '@thread_id:{session-1}' LIMIT 0 1` | ~0.1ms |
+| List history | `FT.SEARCH checkpoints_idx '@thread_id:{session-1}'` | ~0.1ms |
 
-## Next Steps
+**Source:** [`langgraph-checkpoint-aws`](https://github.com/langchain-ai/langgraph-checkpoint-aws) — The official LangGraph checkpointer for Valkey.
 
-You now have a LangGraph agent with persistent state. Next, let's add LLM response caching to cut costs and latency.
-
-[Next: 02 LLM Response Caching →](<02-llm-caching.html>)
+[Next: 02 LLM Response Caching →](02-llm-caching.html)

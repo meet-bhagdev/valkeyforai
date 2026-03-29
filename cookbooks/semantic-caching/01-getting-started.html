@@ -49,16 +49,16 @@ pre code.hljs{background:transparent!important;padding:0}
 <li>Python 3.9+ with <code>redis</code>, <code>openai</code>, <code>numpy</code></li>
 </ul>
 <h2>Step 1: Setup</h2>
-<pre><code class="language-bash">pip install redis openai numpy
+<pre><code class="language-bash">pip install valkey openai numpy
 </code></pre>
-<pre><code class="language-python">import redis
+<pre><code class="language-python">import valkey
 import numpy as np
 import json
 import hashlib
 import time
 from openai import OpenAI
 
-client = redis.Redis(host=&quot;localhost&quot;, port=6379)
+client = valkey.Valkey(host=&quot;localhost&quot;, port=6379)
 openai_client = OpenAI()
 
 EMBEDDING_MODEL = &quot;text-embedding-3-small&quot;
@@ -81,7 +81,7 @@ CACHE_TTL = 3600  # 1 hour
             &quot;DISTANCE_METRIC&quot;, &quot;COSINE&quot;,
         )
         print(&quot;Cache index created&quot;)
-    except redis.ResponseError:
+    except valkey.ResponseError:
         print(&quot;Cache index already exists&quot;)
 
 create_cache_index()
@@ -111,7 +111,15 @@ create_cache_index()
 
     if results[0] &gt; 0:
         fields = results[2]
-        field_dict = {fields[j]: fields[j+1] for j in range(0, len(fields), 2)}
+        # Decode bytes from FT.SEARCH results (skip binary embedding field)
+        field_dict = {}
+        for j in range(0, len(fields), 2):
+            k = fields[j].decode() if isinstance(fields[j], bytes) else fields[j]
+            try:
+                v = fields[j+1].decode() if isinstance(fields[j+1], bytes) else fields[j+1]
+            except UnicodeDecodeError:
+                v = fields[j+1]  # binary field (embedding)
+            field_dict[k] = v
         score = float(field_dict.get(&quot;__embedding_score&quot;, &quot;999&quot;))
 
         if score &lt; SIMILARITY_THRESHOLD:

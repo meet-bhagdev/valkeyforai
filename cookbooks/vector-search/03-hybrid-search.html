@@ -32,10 +32,10 @@ pre code.hljs{background:transparent!important;padding:0}
 <h2>Why Hybrid Search?</h2>
 <p>Pure vector search returns the most similar items globally. But often you need to filter first — &quot;find similar articles, but only in the <em>tech</em> category&quot; or &quot;similar products under $50.&quot; Hybrid search lets you combine vector KNN with traditional filters in a single query.</p>
 <h2>Step 1: Create an Index with Multiple Field Types</h2>
-<pre><code class="language-python">import redis
+<pre><code class="language-python">import valkey
 import numpy as np
 
-client = redis.Redis(host=&quot;localhost&quot;, port=6379)
+client = valkey.Valkey(host=&quot;localhost&quot;, port=6379)
 
 def vec_to_bytes(vec):
     return np.array(vec, dtype=np.float32).tobytes()
@@ -53,8 +53,8 @@ try:
         &quot;DIM&quot;, &quot;4&quot;,
         &quot;DISTANCE_METRIC&quot;, &quot;COSINE&quot;,
     )
-    print(&quot;Index created with TEXT + TAG + NUMERIC + VECTOR&quot;)
-except redis.ResponseError as e:
+    print(&quot;Index created with TAG + NUMERIC + VECTOR&quot;)
+except valkey.ResponseError as e:
     print(f&quot;Index exists: {e}&quot;)
 </code></pre>
 <h2>Step 2: Store Documents with Metadata</h2>

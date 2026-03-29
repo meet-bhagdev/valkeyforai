@@ -40,13 +40,13 @@ pre code.hljs{background:transparent!important;padding:0}
 <h2>Strategy: Context-Aware Cache Keys</h2>
 <p>Instead of embedding only the last user message, we embed a summary of the full conversation context. This way, &quot;Tell me more&quot; in a Valkey conversation matches other Valkey follow-ups, not Python follow-ups.</p>
 <h2>Step 1: Create Index with TAG Filter for User/Session</h2>
-<pre><code class="language-python">import redis
+<pre><code class="language-python">import valkey
 import numpy as np
 import hashlib
 import time
 from openai import OpenAI
 
-client = redis.Redis(host=&quot;localhost&quot;, port=6379)
+client = valkey.Valkey(host=&quot;localhost&quot;, port=6379)
 openai_client = OpenAI()
 EMBEDDING_DIM = 1536
 
@@ -64,7 +64,7 @@ try:
         &quot;DIM&quot;, str(EMBEDDING_DIM),
         &quot;DISTANCE_METRIC&quot;, &quot;COSINE&quot;,
     )
-except redis.ResponseError:
+except valkey.ResponseError:
     pass
 </code></pre>
 <h2>Step 2: Build Context Summary</h2>

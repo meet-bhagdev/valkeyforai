@@ -43,9 +43,9 @@ user_id = &quot;user_123&quot;
 <h2>Pattern 1: Single Entity Lookup</h2>
 <p>The simplest pattern — fetch all features for one entity:</p>
 <h3>Raw Valkey: HGETALL</h3>
-<pre><code class="language-python">import redis
+<pre><code class="language-python">import valkey
 
-client = redis.Redis(host=&quot;localhost&quot;, port=6379, decode_responses=True)
+client = valkey.Valkey(host=&quot;localhost&quot;, port=6379, decode_responses=True)
 
 # Fetch all features for user_123
 raw = client.hgetall(&quot;fs:v1:user_profile:user_123&quot;)

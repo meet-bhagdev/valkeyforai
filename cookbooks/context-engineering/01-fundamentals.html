@@ -83,13 +83,13 @@ pre code.hljs{background:transparent!important;padding:0}
 <li>Valkey with the <strong>valkey-search</strong> module (or ElastiCache for Valkey 8.2+)</li>
 <li>Python 3.9+ with <code>redis</code></li>
 </ul>
-<pre><code class="language-bash">pip install redis
+<pre><code class="language-bash">pip install valkey
 </code></pre>
 <h2>Step 1: Store System Instructions</h2>
-<pre><code class="language-python">import redis
+<pre><code class="language-python">import valkey
 import json
 
-client = redis.Redis(host=&quot;localhost&quot;, port=6379, decode_responses=True)
+client = valkey.Valkey(host=&quot;localhost&quot;, port=6379, decode_responses=True)
 
 # Store agent configuration
 client.hset(&quot;agent:config:support_bot&quot;, mapping={

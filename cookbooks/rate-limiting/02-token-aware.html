@@ -53,10 +53,10 @@ print(count_tokens(&quot;Hello world&quot;))           # ~2
 print(count_tokens(&quot;Explain quantum physics in detail&quot;))  # ~6
 </code></pre>
 <h2>Step 2: Token-Aware Fixed Window</h2>
-<pre><code class="language-python">import redis
+<pre><code class="language-python">import valkey
 import time
 
-client = redis.Redis(host=&quot;localhost&quot;, port=6379, decode_responses=True)
+client = valkey.Valkey(host=&quot;localhost&quot;, port=6379, decode_responses=True)
 
 def check_token_limit(
     identifier: str,

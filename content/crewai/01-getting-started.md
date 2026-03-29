@@ -1,19 +1,15 @@
-## Why Valkey for CrewAI?
+## What is CrewAI + Valkey?
 
-CrewAI agents need persistent memory to learn across executions. Valkey is ideal because:
+[CrewAI](https://github.com/crewAIInc/crewAI) is a framework for orchestrating multi-agent AI systems. Agents need persistent memory to learn across executions. Valkey provides the memory backend:
 
   * **Sub-millisecond reads** — memory recall in ~0.1ms via GLIDE
   * **Vector search** — `FT.SEARCH` with HNSW for semantic recall
   * **JSON storage** — `JSON.SET` stores structured memory records natively
   * **TTL** — memories auto-expire with `EXPIRE`
 
-## Prerequisites
-
-  * Docker installed
-  * Python 3.10+
-  * AWS credentials for Bedrock (for later guides)
-
 ## Step 1: Start Valkey
+
+Docker installed and Python 3.10+ required. AWS credentials needed for Bedrock (later guides).
 
 ```bash
 docker run -d --name valkey -p 6379:6379 valkey/valkey-bundle:latest
@@ -82,16 +78,16 @@ asyncio.run(test_connection())
 # ✅ Connected! Got: world
 ```
 
-**Valkey Commands Fired:**
+## How It Works Under the Hood
 
-```bash
-SET test:hello "world"
-GET test:hello
-DEL test:hello
-```
-
-## Next Steps
+| Operation | Valkey Command | Latency |
+|-----------|---------------|---------|
+| Store value | `SET test:hello "world"` | ~0.1ms |
+| Read value | `GET test:hello` | ~0.1ms |
+| Delete key | `DEL test:hello` | ~0.1ms |
+| Store memory (later) | `JSON.SET memory:{id} $ '{...}'` | ~0.2ms |
+| Search memories (later) | `FT.SEARCH memory_idx "(*)==>[KNN 5 ...]"` | ~1-3ms |
 
 Connection works. Next, we'll build the `ValkeyStorage` backend that implements CrewAI's storage protocol.
 
-[Next: 02 Memory Storage Backend →](<02-memory-storage.html>)
+[Next: 02 Memory Storage Backend →](02-memory-storage.html)

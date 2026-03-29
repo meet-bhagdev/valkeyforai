@@ -11,14 +11,14 @@
 ## Step 1: Setup
 
 ```bash
-pip install redis openai numpy
+pip install valkey openai numpy
 
 
-import redis
+import valkey
 import numpy as np
 from openai import OpenAI
 
-client = redis.Redis(host="localhost", port=6379)
+client = valkey.Valkey(host="localhost", port=6379)
 openai_client = OpenAI()  # Uses OPENAI_API_KEY env var
 
 EMBEDDING_MODEL = "text-embedding-3-small"
@@ -39,7 +39,7 @@ try:
         "DISTANCE_METRIC", "COSINE",
     )
     print("Index created")
-except redis.ResponseError:
+except valkey.ResponseError:
     print("Index already exists")
 ```
 

@@ -29,21 +29,16 @@ pre code.hljs{background:transparent!important;padding:0}
 <h1>Getting Started with CrewAI + Valkey</h1>
 
 
-<h2>Why Valkey for CrewAI?</h2>
-<p>CrewAI agents need persistent memory to learn across executions. Valkey is ideal because:</p>
+<h2>What is CrewAI + Valkey?</h2>
+<p><a href="https://github.com/crewAIInc/crewAI">CrewAI</a> is a framework for orchestrating multi-agent AI systems. Agents need persistent memory to learn across executions. Valkey provides the memory backend:</p>
 <ul>
 <li><strong>Sub-millisecond reads</strong> — memory recall in ~0.1ms via GLIDE</li>
 <li><strong>Vector search</strong> — <code>FT.SEARCH</code> with HNSW for semantic recall</li>
 <li><strong>JSON storage</strong> — <code>JSON.SET</code> stores structured memory records natively</li>
 <li><strong>TTL</strong> — memories auto-expire with <code>EXPIRE</code></li>
 </ul>
-<h2>Prerequisites</h2>
-<ul>
-<li>Docker installed</li>
-<li>Python 3.10+</li>
-<li>AWS credentials for Bedrock (for later guides)</li>
-</ul>
 <h2>Step 1: Start Valkey</h2>
+<p>Docker installed and Python 3.10+ required. AWS credentials needed for Bedrock (later guides).</p>
 <pre><code class="language-bash">docker run -d --name valkey -p 6379:6379 valkey/valkey-bundle:latest
 </code></pre>
 <p>The <code>valkey-bundle</code> image includes JSON and Search modules. Verify:</p>
@@ -96,12 +91,41 @@ async def test_connection():
 asyncio.run(test_connection())
 # ✅ Connected! Got: world
 </code></pre>
-<p><strong>Valkey Commands Fired:</strong></p>
-<pre><code class="language-bash">SET test:hello &quot;world&quot;
-GET test:hello
-DEL test:hello
-</code></pre>
-<h2>Next Steps</h2>
+<h2>How It Works Under the Hood</h2>
+<table>
+<thead>
+<tr>
+<th>Operation</th>
+<th>Valkey Command</th>
+<th>Latency</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>Store value</td>
+<td><code>SET test:hello &quot;world&quot;</code></td>
+<td>~0.1ms</td>
+</tr>
+<tr>
+<td>Read value</td>
+<td><code>GET test:hello</code></td>
+<td>~0.1ms</td>
+</tr>
+<tr>
+<td>Delete key</td>
+<td><code>DEL test:hello</code></td>
+<td>~0.1ms</td>
+</tr>
+<tr>
+<td>Store memory (later)</td>
+<td><code>JSON.SET memory:{id} $ &#39;{...}&#39;</code></td>
+<td>~0.2ms</td>
+</tr>
+<tr>
+<td>Search memories (later)</td>
+<td><code>FT.SEARCH memory_idx &quot;(*)==&gt;[KNN 5 ...]&quot;</code></td>
+<td>~1-3ms</td>
+</tr>
+</tbody></table>
 <p>Connection works. Next, we&#39;ll build the <code>ValkeyStorage</code> backend that implements CrewAI&#39;s storage protocol.</p>
 <p><a href="02-memory-storage.html">Next: 02 Memory Storage Backend →</a></p>
 

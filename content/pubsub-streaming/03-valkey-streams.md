@@ -11,8 +11,8 @@ Backpressure| None| MAXLEN trimming
 ## Step 1: Add Messages
 
 ```python
-import redis, json, time
-client = redis.Redis(host="localhost", port=6379, decode_responses=True)
+import valkey, json, time
+client = valkey.Valkey(host="localhost", port=6379, decode_responses=True)
 
 # XADD — append to stream
 entry_id = client.xadd("ai:tasks", {

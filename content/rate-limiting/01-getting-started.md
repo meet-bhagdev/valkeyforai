@@ -12,14 +12,14 @@ docker run -d --name valkey -p 6379:6379 valkey/valkey:latest
 Verify it's running:
 
 ```bash
-valkey-cli ping
+docker exec valkey valkey-cli ping
 # PONG
 ```
 
 ## Step 2: Install Dependencies
 
 ```bash
-pip install redis
+pip install valkey
 ```
 
 That's it — no special libraries needed. The `redis` Python package works with Valkey out of the box.
@@ -27,10 +27,10 @@ That's it — no special libraries needed. The `redis` Python package works with
 ## Step 3: Your First Rate Limiter
 
 ```python
-import redis
+import valkey
 import time
 
-client = redis.Redis(host="localhost", port=6379, decode_responses=True)
+client = valkey.Valkey(host="localhost", port=6379, decode_responses=True)
 
 def check_rate_limit(user_id: str, max_requests: int = 10, window: int = 60) -> dict:
     """Fixed-window rate limiter."""

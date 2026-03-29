@@ -31,10 +31,10 @@ pre code.hljs{background:transparent!important;padding:0}
 
 <h2>Pattern 1: Feature Freshness Monitoring</h2>
 <p>Every feature Hash includes an <code>_updated_at</code> timestamp. Use it to detect stale features before they poison your model:</p>
-<pre><code class="language-python">import redis
+<pre><code class="language-python">import valkey
 import time
 
-client = redis.Redis(host=&quot;localhost&quot;, port=6379, decode_responses=True)
+client = valkey.Valkey(host=&quot;localhost&quot;, port=6379, decode_responses=True)
 
 def check_freshness(feature_view: str, entity_id: str, threshold_seconds: float = 300):
     &quot;&quot;&quot;Check if features are fresh enough for inference.&quot;&quot;&quot;
@@ -200,10 +200,10 @@ def dual_write(entity_id, features, features_v2):
 <p><strong>Zero-downtime migration:</strong> Because Valkey keys include the version prefix, v1 and v2 coexist safely. Dual-write during migration, switch readers, then let v1 expire. No data loss, no downtime.</p>
 <h2>Pattern 4: Connection Pooling</h2>
 <p>In production, always use connection pooling to avoid creating a new TCP connection per request:</p>
-<pre><code class="language-python">import redis
+<pre><code class="language-python">import valkey
 
 # Create a connection pool (once at app startup)
-pool = redis.ConnectionPool(
+pool = valkey.ConnectionPool(
     host=&quot;localhost&quot;,
     port=6379,
     max_connections=50,    # Max concurrent connections
@@ -214,7 +214,7 @@ pool = redis.ConnectionPool(
 )
 
 # Create client from pool (cheap — reuses connections)
-client = redis.Redis(connection_pool=pool)
+client = valkey.Valkey(connection_pool=pool)
 
 # Use with the feature store library
 store = ValkeyFeatureStore(client=client)

@@ -30,8 +30,8 @@ pre code.hljs{background:transparent!important;padding:0}
 
 
 <h2>Pattern 1: Backpressure with MAXLEN</h2>
-<pre><code class="language-python">import redis, time
-client = redis.Redis(host=&quot;localhost&quot;, port=6379, decode_responses=True)
+<pre><code class="language-python">import valkey, time
+client = valkey.Valkey(host=&quot;localhost&quot;, port=6379, decode_responses=True)
 
 # Approximate trim (faster, recommended)
 client.xadd(&quot;ai:tasks&quot;, {&quot;data&quot;: &quot;...&quot;}, maxlen=10000)
@@ -56,7 +56,7 @@ print(stream_health(&quot;ai:tasks&quot;))
 <pre><code class="language-python">def resilient_subscriber(channel):
     while True:
         try:
-            c = redis.Redis(host=&quot;localhost&quot;, decode_responses=True)
+            c = valkey.Valkey(host=&quot;localhost&quot;, decode_responses=True)
             ps = c.pubsub()
             ps.subscribe(channel)
             print(f&quot;Connected to {channel}&quot;)

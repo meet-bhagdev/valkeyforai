@@ -31,13 +31,13 @@ pre code.hljs{background:transparent!important;padding:0}
 
 <h2>The Context Assembly Function</h2>
 <p>Before every LLM call, an agent needs to assemble context from multiple sources. This function is the core of context engineering — it gathers everything the LLM needs into a structured prompt.</p>
-<pre><code class="language-python">import redis
+<pre><code class="language-python">import valkey
 import json
 import struct
 import time
 
-client = redis.Redis(host=&quot;localhost&quot;, port=6379, decode_responses=True)
-client_bin = redis.Redis(host=&quot;localhost&quot;, port=6379, decode_responses=False)
+client = valkey.Valkey(host=&quot;localhost&quot;, port=6379, decode_responses=True)
+client_bin = valkey.Valkey(host=&quot;localhost&quot;, port=6379, decode_responses=False)
 
 def assemble_context(user_id: str, session_id: str, agent_id: str, current_message: str) -&gt; list:
     &quot;&quot;&quot;Assemble complete context for an LLM call from all 5 sources in Valkey.&quot;&quot;&quot;

@@ -30,8 +30,8 @@ pre code.hljs{background:transparent!important;padding:0}
 
 
 <h2>Pattern 1: Pub/Sub Fan-Out (Live)</h2>
-<pre><code class="language-python">import redis, json, time
-client = redis.Redis(host=&quot;localhost&quot;, port=6379, decode_responses=True)
+<pre><code class="language-python">import valkey, json, time
+client = valkey.Valkey(host=&quot;localhost&quot;, port=6379, decode_responses=True)
 
 def broadcast_agent_event(agent_id, event_type, payload):
     &quot;&quot;&quot;Broadcast to all subscribers watching this agent.&quot;&quot;&quot;

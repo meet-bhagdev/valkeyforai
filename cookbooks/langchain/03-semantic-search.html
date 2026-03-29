@@ -99,7 +99,7 @@ for r in results:
 <p><strong>Valkey Commands Fired:</strong></p>
 <pre><code class="language-python"># Index creation (once)
 FT.CREATE semantic_cache_idx ON JSON PREFIX 1 &quot;store:semantic_cache:&quot;
-  SCHEMA $.text AS text TEXT
+  SCHEMA $.text AS text TAG
          $.embedding AS embedding VECTOR HNSW 6
            TYPE FLOAT32 DIM 1536 DISTANCE_METRIC COSINE
 
@@ -111,7 +111,7 @@ EXPIRE store:semantic_cache:help-desk:passwords:q1 3600
 FT.SEARCH semantic_cache_idx
   &quot;(*)==&gt;[KNN 3 @embedding $vec AS score]&quot;
   PARAMS 2 vec &lt;binary_vector&gt;
-  SORTBY score ASC LIMIT 0 3
+  LIMIT 0 3
 </code></pre>
 <h2>Step 4: HNSW Tuning</h2>
 <p>Tune the index for your speed/accuracy tradeoff:</p>

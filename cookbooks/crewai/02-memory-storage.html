@@ -104,8 +104,8 @@ async def ensure_index(client):
 </code></pre>
 <p><strong>Valkey Command:</strong></p>
 <pre><code class="language-bash">FT.CREATE memory_idx ON JSON PREFIX 1 &quot;memory:&quot;
-  SCHEMA $.scope AS scope TEXT
-         $.categories_str AS categories_str TEXT
+  SCHEMA $.scope AS scope TAG
+         $.categories_str AS categories_str TAG
          $.importance AS importance NUMERIC
          $.created_at AS created_at NUMERIC
          $.embedding AS embedding VECTOR HNSW 6
@@ -151,7 +151,7 @@ async def recall(client, query_embedding: list[float], limit: int = 5):
 <pre><code class="language-bash">FT.SEARCH memory_idx
   &quot;(*)==&gt;[KNN 5 @embedding $vec AS score]&quot;
   PARAMS 2 vec &lt;binary_vector_6144_bytes&gt;
-  SORTBY score ASC LIMIT 0 5
+  LIMIT 0 5
 </code></pre>
 <h2>Step 5: Filtered Search</h2>
 <pre><code class="language-python">async def search(client, query_embedding, scope: str = None, categories: list = None, limit: int = 5):

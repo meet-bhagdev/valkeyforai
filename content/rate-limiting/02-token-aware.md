@@ -30,10 +30,10 @@ print(count_tokens("Explain quantum physics in detail"))  # ~6
 ## Step 2: Token-Aware Fixed Window
 
 ```python
-import redis
+import valkey
 import time
 
-client = redis.Redis(host="localhost", port=6379, decode_responses=True)
+client = valkey.Valkey(host="localhost", port=6379, decode_responses=True)
 
 def check_token_limit(
     identifier: str,

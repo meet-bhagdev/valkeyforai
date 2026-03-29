@@ -1,8 +1,8 @@
 ## Pattern 1: Pub/Sub Fan-Out (Live)  
 
 ```python
-import redis, json, time
-client = redis.Redis(host="localhost", port=6379, decode_responses=True)
+import valkey, json, time
+client = valkey.Valkey(host="localhost", port=6379, decode_responses=True)
 
 def broadcast_agent_event(agent_id, event_type, payload):
     """Broadcast to all subscribers watching this agent."""

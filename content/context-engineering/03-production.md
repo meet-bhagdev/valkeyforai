@@ -3,11 +3,11 @@
 The memory layer is the foundation of context engineering at scale. Valkey supports both memory types through TTL management:
 
 ```python
-import redis
+import valkey
 import json
 import time
 
-client = redis.Redis(host="localhost", port=6379, decode_responses=True)
+client = valkey.Valkey(host="localhost", port=6379, decode_responses=True)
 
 # Short-term memory: active session context (low TTL)
 def store_short_term(session_id: str, key: str, value: str, ttl: int = 1800):

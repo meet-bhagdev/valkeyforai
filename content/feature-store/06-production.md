@@ -3,10 +3,10 @@
 Every feature Hash includes an `_updated_at` timestamp. Use it to detect stale features before they poison your model:
 
 ```python
-import redis
+import valkey
 import time
 
-client = redis.Redis(host="localhost", port=6379, decode_responses=True)
+client = valkey.Valkey(host="localhost", port=6379, decode_responses=True)
 
 def check_freshness(feature_view: str, entity_id: str, threshold_seconds: float = 300):
     """Check if features are fresh enough for inference."""
@@ -194,10 +194,10 @@ def dual_write(entity_id, features, features_v2):
 In production, always use connection pooling to avoid creating a new TCP connection per request:
 
 ```python
-import redis
+import valkey
 
 # Create a connection pool (once at app startup)
-pool = redis.ConnectionPool(
+pool = valkey.ConnectionPool(
     host="localhost",
     port=6379,
     max_connections=50,    # Max concurrent connections
@@ -208,7 +208,7 @@ pool = redis.ConnectionPool(
 )
 
 # Create client from pool (cheap — reuses connections)
-client = redis.Redis(connection_pool=pool)
+client = valkey.Valkey(connection_pool=pool)
 
 # Use with the feature store library
 store = ValkeyFeatureStore(client=client)

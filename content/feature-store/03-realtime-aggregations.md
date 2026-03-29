@@ -13,11 +13,11 @@ Count events in a sliding time window — e.g., "transactions in the last hour."
 We use a **Sorted Set** where each member is a unique event ID and the score is the timestamp:
 
 ```python
-import redis
+import valkey
 import time
 import uuid
 
-client = redis.Redis(host="localhost", port=6379, decode_responses=True)
+client = valkey.Valkey(host="localhost", port=6379, decode_responses=True)
 
 def record_event(user_id: str, window_seconds: int = 3600):
     """Record an event and return the count in the sliding window."""

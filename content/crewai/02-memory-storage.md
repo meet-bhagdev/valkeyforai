@@ -86,8 +86,8 @@ async def ensure_index(client):
 
 ```bash
 FT.CREATE memory_idx ON JSON PREFIX 1 "memory:"
-  SCHEMA $.scope AS scope TEXT
-         $.categories_str AS categories_str TEXT
+  SCHEMA $.scope AS scope TAG
+         $.categories_str AS categories_str TAG
          $.importance AS importance NUMERIC
          $.created_at AS created_at NUMERIC
          $.embedding AS embedding VECTOR HNSW 6
@@ -145,7 +145,7 @@ async def recall(client, query_embedding: list[float], limit: int = 5):
 FT.SEARCH memory_idx
   "(*)==>[KNN 5 @embedding $vec AS score]"
   PARAMS 2 vec <binary_vector_6144_bytes>
-  SORTBY score ASC LIMIT 0 5
+  LIMIT 0 5
 ```
 
 ## Step 5: Filtered Search

@@ -32,12 +32,12 @@ pre code.hljs{background:transparent!important;padding:0}
 <h2>Why Consumer Groups?</h2>
 <p>With plain XREAD, every consumer gets every message. With consumer groups, messages are distributed — enabling parallel processing of AI tasks like embeddings, completions, and tool calls.</p>
 <h2>Step 1: Create a Group</h2>
-<pre><code class="language-python">import redis
-client = redis.Redis(host=&quot;localhost&quot;, port=6379, decode_responses=True)
+<pre><code class="language-python">import valkey
+client = valkey.Valkey(host=&quot;localhost&quot;, port=6379, decode_responses=True)
 
 try:
     client.xgroup_create(&quot;ai:tasks&quot;, &quot;workers&quot;, id=&quot;0&quot;, mkstream=True)
-except redis.ResponseError:
+except valkey.ResponseError:
     pass  # Group already exists
 </code></pre>
 <h2>Step 2: Consume from Group</h2>

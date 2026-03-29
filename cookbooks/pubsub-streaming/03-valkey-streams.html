@@ -65,8 +65,8 @@ pre code.hljs{background:transparent!important;padding:0}
 </tr>
 </tbody></table>
 <h2>Step 1: Add Messages</h2>
-<pre><code class="language-python">import redis, json, time
-client = redis.Redis(host=&quot;localhost&quot;, port=6379, decode_responses=True)
+<pre><code class="language-python">import valkey, json, time
+client = valkey.Valkey(host=&quot;localhost&quot;, port=6379, decode_responses=True)
 
 # XADD — append to stream
 entry_id = client.xadd(&quot;ai:tasks&quot;, {

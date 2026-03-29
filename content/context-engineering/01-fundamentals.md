@@ -26,16 +26,16 @@ Every LLM call needs context assembled from up to 5 sources. Valkey can serve as
 - Python 3.9+ with `redis`
 
 ```bash
-pip install redis
+pip install valkey
 ```
 
 ## Step 1: Store System Instructions
 
 ```python
-import redis
+import valkey
 import json
 
-client = redis.Redis(host="localhost", port=6379, decode_responses=True)
+client = valkey.Valkey(host="localhost", port=6379, decode_responses=True)
 
 # Store agent configuration
 client.hset("agent:config:support_bot", mapping={

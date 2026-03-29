@@ -22,18 +22,18 @@
 ## Step 1: Setup
 
 ```bash
-pip install redis openai numpy
+pip install valkey openai numpy
 ```
 
 ```python
-import redis
+import valkey
 import numpy as np
 import json
 import hashlib
 import time
 from openai import OpenAI
 
-client = redis.Redis(host="localhost", port=6379)
+client = valkey.Valkey(host="localhost", port=6379)
 openai_client = OpenAI()
 
 EMBEDDING_MODEL = "text-embedding-3-small"
@@ -59,7 +59,7 @@ def create_cache_index():
             "DISTANCE_METRIC", "COSINE",
         )
         print("Cache index created")
-    except redis.ResponseError:
+    except valkey.ResponseError:
         print("Cache index already exists")
 
 create_cache_index()
@@ -95,7 +95,15 @@ def semantic_cache_lookup(prompt: str) -> dict:
 
     if results[0] > 0:
         fields = results[2]
-        field_dict = {fields[j]: fields[j+1] for j in range(0, len(fields), 2)}
+        # Decode bytes from FT.SEARCH results (skip binary embedding field)
+        field_dict = {}
+        for j in range(0, len(fields), 2):
+            k = fields[j].decode() if isinstance(fields[j], bytes) else fields[j]
+            try:
+                v = fields[j+1].decode() if isinstance(fields[j+1], bytes) else fields[j+1]
+            except UnicodeDecodeError:
+                v = fields[j+1]  # binary field (embedding)
+            field_dict[k] = v
         score = float(field_dict.get("__embedding_score", "999"))
 
         if score < SIMILARITY_THRESHOLD:

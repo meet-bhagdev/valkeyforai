@@ -29,20 +29,16 @@ pre code.hljs{background:transparent!important;padding:0}
 <h1>Getting Started with LangChain + Valkey</h1>
 
 
-<h2>Why Valkey for LangGraph?</h2>
-<p>LangGraph agents are stateless by default — every invocation starts fresh. <code>ValkeySaver</code> adds persistent checkpointing backed by Valkey:</p>
+<h2>What is LangGraph + Valkey?</h2>
+<p><a href="https://github.com/langchain-ai/langgraph">LangGraph</a> agents are stateless by default — every invocation starts fresh. <code>ValkeySaver</code> from the <code>langgraph-checkpoint-aws</code> package adds persistent checkpointing backed by Valkey:</p>
 <ul>
 <li><strong>Sub-millisecond reads</strong> — checkpoint retrieval in ~0.1ms</li>
 <li><strong>Atomic writes</strong> — no partial state corruption</li>
 <li><strong>Built-in TTL</strong> — sessions auto-expire, no cleanup jobs</li>
 <li><strong>ElastiCache ready</strong> — same code works locally and in production</li>
 </ul>
-<h2>Prerequisites</h2>
-<ul>
-<li>Docker installed</li>
-<li>Python 3.10+</li>
-</ul>
 <h2>Step 1: Start Valkey</h2>
+<p>Docker installed and Python 3.10+ required.</p>
 <pre><code class="language-bash">docker run -d --name valkey -p 6379:6379 valkey/valkey-bundle:latest
 </code></pre>
 <p>The <code>valkey-bundle</code> image includes JSON and Search modules needed for ValkeyStore. Verify:</p>
@@ -65,7 +61,7 @@ pre code.hljs{background:transparent!important;padding:0}
     &quot;versions_seen&quot;: {...}
 }
 </code></pre>
-<p><strong>Under the Hood:</strong> <code>ValkeySaver</code> uses Valkey JSON (<code>JSON.SET</code>) for structured storage and RediSearch (<code>FT.CREATE</code>, <code>FT.SEARCH</code>) for indexing checkpoints by thread ID and namespace. TTL is applied via <code>EXPIRE</code>.</p>
+<p><strong>Under the Hood:</strong> <code>ValkeySaver</code> uses Valkey JSON (<code>JSON.SET</code>) for structured storage and <code>FT.CREATE</code>/<code>FT.SEARCH</code> for indexing checkpoints by thread ID and namespace. TTL is applied via <code>EXPIRE</code>.</p>
 <h2>Step 4: Persist a LangGraph Agent</h2>
 <pre><code class="language-python">from langgraph.graph import StateGraph, MessagesState
 from langgraph_checkpoint_aws import ValkeySaver
@@ -121,13 +117,37 @@ with ValkeySaver.from_conn_string(&quot;valkey://localhost:6379&quot;) as checkp
     for cp in checkpointer.list(config):
         print(cp.metadata)  # Shows previous conversation
 </code></pre>
-<p><strong>Valkey Commands Fired:</strong></p>
-<pre><code class="language-python">JSON.SET checkpoint:session-1:__empty__:abc123 $ &#39;{...}&#39;
-EXPIRE checkpoint:session-1:__empty__:abc123 3600
-FT.SEARCH checkpoints_idx &#39;@thread_id:{session-1}&#39; SORTBY ts DESC LIMIT 0 1
-</code></pre>
-<h2>Next Steps</h2>
-<p>You now have a LangGraph agent with persistent state. Next, let&#39;s add LLM response caching to cut costs and latency.</p>
+<h2>How It Works Under the Hood</h2>
+<table>
+<thead>
+<tr>
+<th>Operation</th>
+<th>Valkey Command</th>
+<th>Latency</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>Save checkpoint</td>
+<td><code>JSON.SET checkpoint:{thread}:{ns}:{id} $ &#39;{...}&#39;</code></td>
+<td>~0.2ms</td>
+</tr>
+<tr>
+<td>Set TTL</td>
+<td><code>EXPIRE checkpoint:{thread}:{ns}:{id} 3600</code></td>
+<td>~0.1ms</td>
+</tr>
+<tr>
+<td>Load latest</td>
+<td><code>FT.SEARCH checkpoints_idx &#39;@thread_id:{session-1}&#39; LIMIT 0 1</code></td>
+<td>~0.1ms</td>
+</tr>
+<tr>
+<td>List history</td>
+<td><code>FT.SEARCH checkpoints_idx &#39;@thread_id:{session-1}&#39;</code></td>
+<td>~0.1ms</td>
+</tr>
+</tbody></table>
+<p><strong>Source:</strong> <a href="https://github.com/langchain-ai/langgraph-checkpoint-aws"><code>langgraph-checkpoint-aws</code></a> — The official LangGraph checkpointer for Valkey.</p>
 <p><a href="02-llm-caching.html">Next: 02 LLM Response Caching →</a></p>
 
 

@@ -1,7 +1,7 @@
 ## Prerequisites
 
   * Valkey server with the **valkey-search** module loaded
-  * Python 3.9+ with the `redis` package
+  * Python 3.9+ with the `valkey` and `numpy` packages
 
 ## Step 1: Start Valkey with Search Module
 
@@ -20,7 +20,7 @@ valkey-cli MODULE LIST
 ## Step 2: Install Python Client
 
 ```bash
-pip install redis
+pip install valkey numpy
 ```
 
 We use the standard `redis` Python client. Module commands like `FT.CREATE` are called via `execute_command()`.
@@ -28,11 +28,10 @@ We use the standard `redis` Python client. Module commands like `FT.CREATE` are 
 ## Step 3: Create a Vector Index
 
 ```python
-import redis
-import struct
+import valkey
 import numpy as np
 
-client = redis.Redis(host="localhost", port=6379)
+client = valkey.Valkey(host="localhost", port=6379)
 
 # Create an index with a 3-dimensional FLOAT32 vector field using HNSW
 # Syntax: FT.CREATE index SCHEMA field_name VECTOR HNSW num_params TYPE DIM DISTANCE_METRIC
@@ -46,7 +45,7 @@ try:
         "DISTANCE_METRIC", "COSINE",
     )
     print("Index created!")
-except redis.ResponseError as e:
+except valkey.ResponseError as e:
     print(f"Index may already exist: {e}")
 ```
 

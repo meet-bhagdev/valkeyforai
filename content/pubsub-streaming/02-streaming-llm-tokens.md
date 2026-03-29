@@ -12,12 +12,12 @@ When streaming from an LLM (OpenAI, Anthropic, etc.), tokens arrive one at a tim
 ## Step 1: Token Publisher (Server Side)
 
 ```python
-import redis
+import valkey
 import json
 import time
 import uuid
 
-client = redis.Redis(host="localhost", port=6379, decode_responses=True)
+client = valkey.Valkey(host="localhost", port=6379, decode_responses=True)
 
 def stream_llm_response(prompt: str, request_id: str = None):
     """Simulate an LLM streaming response, publishing each token."""
@@ -67,10 +67,10 @@ print(f"Streamed response: {rid}")
 ## Step 2: Token Subscriber (Client Side)
 
 ```python
-import redis
+import valkey
 import json
 
-client = redis.Redis(host="localhost", port=6379, decode_responses=True)
+client = valkey.Valkey(host="localhost", port=6379, decode_responses=True)
 
 def watch_stream(request_id: str):
     """Subscribe to an LLM response stream and reassemble tokens."""

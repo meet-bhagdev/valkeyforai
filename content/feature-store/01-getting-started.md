@@ -21,14 +21,14 @@ docker run -d --name valkey -p 6379:6379 valkey/valkey:latest
 Verify it's running:
 
 ```bash
-valkey-cli ping
+docker exec valkey valkey-cli ping
 # PONG
 ```
 
 ## Step 2: Install Dependencies
 
 ```bash
-pip install redis
+pip install valkey
 ```
 
 The `redis` Python package works with Valkey out of the box — no special drivers needed.
@@ -56,10 +56,10 @@ fs:v1:user_profile:user_123 → {
 Let's start with raw Valkey commands to understand what's happening under the hood:
 
 ```python
-import redis
+import valkey
 import time
 
-client = redis.Redis(host="localhost", port=6379, decode_responses=True)
+client = valkey.Valkey(host="localhost", port=6379, decode_responses=True)
 
 # Write features for a user
 key = "fs:v1:user_profile:user_001"
@@ -96,7 +96,13 @@ print(f"age={age}, ltv={ltv}")
 
 ## Step 6: Use the Library
 
-Now let's do the same thing with the feature store library, which handles serialization, TTL, and metadata for you:
+Now let's do the same thing with the feature store library, which handles serialization, TTL, and metadata for you.
+
+**Note:** This step uses the feature store library from the [valkeyforai GitHub repo](https://github.com/meet-bhagdev/valkeyforai). Clone it first:
+
+```bash
+git clone https://github.com/meet-bhagdev/valkeyforai && cd valkeyforai
+```
 
 ```python
 from src import ValkeyFeatureStore, Entity, FeatureView, Feature, FeatureType

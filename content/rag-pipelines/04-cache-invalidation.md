@@ -113,7 +113,7 @@ maxmemory-policy volatile-lru
 ```python
 class SmartCache:
     def __init__(self, default_ttl=3600):
-        self.client = redis.Redis()
+        self.client = valkey.Valkey()
         self.default_ttl = default_ttl
 
     def set(self, query, response, sources=None, ttl=None):

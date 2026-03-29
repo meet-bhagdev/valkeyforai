@@ -61,8 +61,8 @@ replica-read-only yes
 
 ```python
 # Connect to replicas for read scaling
-primary = redis.Redis(host='primary', port=6379)
-replica = redis.Redis(host='replica', port=6379)
+primary = valkey.Valkey(host='primary', port=6379)
+replica = valkey.Valkey(host='replica', port=6379)
 
 # Write to primary, read from replicas
 primary.hset(key, mapping=data)
@@ -93,16 +93,16 @@ hash-max-ziplist-value 64
 
 ```python
 # Use connection pools in production
-pool = redis.ConnectionPool(
+pool = valkey.ConnectionPool(
     host='localhost',
     port=6379,
     max_connections=50,
     decode_responses=False
 )
-client = redis.Redis(connection_pool=pool)
+client = valkey.Valkey(connection_pool=pool)
 
 # Or use async with connection pool
-pool = redis.asyncio.ConnectionPool.from_url(
+pool = valkey.asyncio.ConnectionPool.from_url(
     "redis://localhost:6379",
     max_connections=50
 )
@@ -112,7 +112,7 @@ pool = redis.asyncio.ConnectionPool.from_url(
 
 ```python
 # Connect to ElastiCache cluster
-client = redis.Redis(
+client = valkey.Valkey(
     host='my-cluster.cache.amazonaws.com',
     port=6379,
     ssl=True,

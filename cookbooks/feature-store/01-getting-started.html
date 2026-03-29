@@ -46,11 +46,11 @@ pre code.hljs{background:transparent!important;padding:0}
 <pre><code class="language-bash">docker run -d --name valkey -p 6379:6379 valkey/valkey:latest
 </code></pre>
 <p>Verify it&#39;s running:</p>
-<pre><code class="language-bash">valkey-cli ping
+<pre><code class="language-bash">docker exec valkey valkey-cli ping
 # PONG
 </code></pre>
 <h2>Step 2: Install Dependencies</h2>
-<pre><code class="language-bash">pip install redis
+<pre><code class="language-bash">pip install valkey
 </code></pre>
 <p>The <code>redis</code> Python package works with Valkey out of the box — no special drivers needed.</p>
 <h2>Step 3: Understand the Data Model</h2>
@@ -68,10 +68,10 @@ fs:v1:user_profile:user_123 → {
 <p><strong>Key Insight:</strong> Valkey Hashes map perfectly to feature vectors. Each field is a feature, each key is an entity. One <code>HGETALL</code> returns the full feature vector. One <code>HMGET</code> returns selective features. Both complete in ~0.1ms.</p>
 <h2>Step 4: Write Features with Raw Valkey Commands</h2>
 <p>Let&#39;s start with raw Valkey commands to understand what&#39;s happening under the hood:</p>
-<pre><code class="language-python">import redis
+<pre><code class="language-python">import valkey
 import time
 
-client = redis.Redis(host=&quot;localhost&quot;, port=6379, decode_responses=True)
+client = valkey.Valkey(host=&quot;localhost&quot;, port=6379, decode_responses=True)
 
 # Write features for a user
 key = &quot;fs:v1:user_profile:user_001&quot;
@@ -103,7 +103,10 @@ print(f&quot;age={age}, ltv={ltv}&quot;)
 # age=28, ltv=1250.50
 </code></pre>
 <h2>Step 6: Use the Library</h2>
-<p>Now let&#39;s do the same thing with the feature store library, which handles serialization, TTL, and metadata for you:</p>
+<p>Now let&#39;s do the same thing with the feature store library, which handles serialization, TTL, and metadata for you.</p>
+<p><strong>Note:</strong> This step uses the feature store library from the <a href="https://github.com/meet-bhagdev/valkeyforai">valkeyforai GitHub repo</a>. Clone it first:</p>
+<pre><code class="language-bash">git clone https://github.com/meet-bhagdev/valkeyforai &amp;&amp; cd valkeyforai
+</code></pre>
 <pre><code class="language-python">from src import ValkeyFeatureStore, Entity, FeatureView, Feature, FeatureType
 
 # Connect

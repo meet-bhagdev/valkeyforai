@@ -95,7 +95,7 @@ TTL_CONFIG = {
 ```python
 class SemanticCache:
     def __init__(self, threshold=0.92, default_ttl=3600):
-        self.client = redis.Redis(decode_responses=False)
+        self.client = valkey.Valkey(decode_responses=False)
         self.threshold = threshold
         self.default_ttl = default_ttl
         self._create_index()
