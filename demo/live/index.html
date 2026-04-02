@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Live Demos - Valkey for AI</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+:root{--bg:#0a0a0a;--card:#141414;--brd:#222;--t1:#e5e5e5;--t2:#888;--t3:#555;--g1:#a855f7;--g2:#6366f1;--green:#22c55e;--font:'Inter',sans-serif}
+body{font-family:var(--font);background:var(--bg);color:var(--t1);line-height:1.6;min-height:100vh}
+.container{max-width:700px;margin:0 auto;padding:48px 24px}
+h1{font-size:36px;font-weight:900;margin-bottom:8px}
+.sub{color:var(--t2);font-size:16px;margin-bottom:32px}
+.live-badge{display:inline-block;background:#22c55e22;color:#22c55e;font-size:12px;font-weight:700;padding:4px 12px;border-radius:100px;margin-bottom:16px}
+.card{display:block;background:var(--card);border:1px solid var(--brd);border-radius:12px;padding:24px;margin-bottom:12px;text-decoration:none;color:var(--t1);transition:.2s}
+.card:hover{border-color:var(--g1);transform:translateY(-2px)}
+.card h3{font-size:18px;font-weight:700;margin-bottom:4px}
+.card p{font-size:14px;color:var(--t2)}
+.card .cmds{font-size:12px;color:var(--g1);margin-top:8px}
+.info{background:var(--card);border:1px solid var(--brd);border-radius:12px;padding:20px;margin-top:32px;font-size:13px;color:var(--t2)}
+.info code{background:#0a0a0a;padding:2px 6px;border-radius:4px;font-size:12px}
+</style>
+</head>
+<body>
+<nav class="nav"><div class="nav-inner"><a href="/" class="nav-logo"><img src="/valkey-logo.svg" alt="Valkey"><span class="accent">for ai</span></a><div class="nav-links"><a href="/#use-cases">Use Cases</a><a href="/#frameworks">Frameworks</a><a href="https://github.com/meet-bhagdev/valkeyforai/tree/main" target="_blank">GitHub</a></div></div></nav>
+<div class="container">
+<div class="live-badge">LIVE - Connected to Valkey 9 on EC2</div>
+<h1>Live Demos</h1>
+<p class="sub">These demos run real Valkey commands against a live Valkey 9 instance. Every score, every latency, every result is real.</p>
+
+<a class="card" href="vector-search.html">
+<h3>Vector Search</h3>
+<p>Create an HNSW index, load documents with embeddings, run KNN queries. Real cosine scores and sub-millisecond latencies.</p>
+<div class="cmds">FT.CREATE + HSET + FT.SEARCH KNN</div>
+</a>
+
+<a class="card" href="semantic-caching.html">
+<h3>Semantic Caching</h3>
+<p>Cache a response, then query with similar text. See real cache hits and misses with actual cosine distance scores.</p>
+<div class="cmds">FT.CREATE + HSET + FT.SEARCH KNN + EXPIRE</div>
+</a>
+
+<a class="card" href="rate-limiting.html">
+<h3>Rate Limiting</h3>
+<p>Click fast and watch yourself get rate limited. Real INCR + EXPIRE pipeline with actual sub-millisecond latencies.</p>
+<div class="cmds">INCR + EXPIRE pipeline</div>
+</a>
+
+<div class="info">
+<strong>Backend:</strong> FastAPI + Valkey 9 (<code>valkey-bundle</code>) on EC2.<br>
+<strong>Source:</strong> The API and demo code are in the <a href="https://github.com/meet-bhagdev/valkeyforai" style="color:var(--g1)">valkeyforai repo</a>. You can deploy this in your own environment.
+</div>
+</div>
+</body>
+</html>

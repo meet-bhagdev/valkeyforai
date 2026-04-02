@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Live Rate Limiting Demo - Valkey for AI</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+:root{--bg:#0a0a0a;--card:#141414;--brd:#222;--t1:#e5e5e5;--t2:#888;--t3:#555;--g1:#a855f7;--g2:#6366f1;--green:#22c55e;--red:#ef4444;--font:'Inter',sans-serif;--mono:'JetBrains Mono',monospace}
+body{font-family:var(--font);background:var(--bg);color:var(--t1);line-height:1.5;min-height:100vh}
+.container{max-width:900px;margin:0 auto;padding:32px 24px}
+h1{font-size:28px;font-weight:800;margin-bottom:4px}
+.sub{color:var(--t2);font-size:14px;margin-bottom:24px}
+.live-badge{display:inline-block;background:#22c55e22;color:#22c55e;font-size:11px;font-weight:700;padding:3px 10px;border-radius:100px;margin-bottom:16px}
+.panel{background:var(--card);border:1px solid var(--brd);border-radius:12px;padding:20px;margin-bottom:16px}
+.panel h3{font-size:14px;font-weight:700;margin-bottom:12px;color:var(--t2)}
+.btn{padding:10px 24px;border-radius:8px;font-size:14px;font-weight:600;border:none;cursor:pointer;transition:.2s}
+.btn-primary{background:linear-gradient(135deg,var(--g1),var(--g2));color:#fff}
+.btn-primary:hover{opacity:.9}
+.btn-danger{background:var(--red);color:#fff}
+.btn-secondary{background:var(--card);color:var(--t1);border:1px solid var(--brd)}
+.btn-row{display:flex;gap:8px;margin-top:12px;flex-wrap:wrap;align-items:center}
+.stats{display:flex;gap:24px;margin-bottom:16px;flex-wrap:wrap}
+.stat{text-align:center}
+.stat .num{font-size:28px;font-weight:800}
+.stat .lbl{font-size:11px;color:var(--t3);text-transform:uppercase}
+.bar-wrap{background:#1a1a1a;border-radius:8px;height:32px;margin:16px 0;overflow:hidden;position:relative}
+.bar-fill{height:100%;border-radius:8px;transition:width .2s;background:linear-gradient(90deg,var(--g1),var(--g2))}
+.bar-fill.full{background:var(--red)}
+.bar-label{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);font-size:13px;font-weight:700;color:#fff}
+.log{background:#0a0a0a;border:1px solid var(--brd);border-radius:8px;padding:12px;font-family:var(--mono);font-size:12px;max-height:250px;overflow-y:auto}
+.log-entry{padding:4px 0;border-bottom:1px solid #1a1a1a;display:flex;justify-content:space-between}
+.log-entry.allowed{color:var(--green)}
+.log-entry.denied{color:var(--red)}
+.cmd-log{background:#0a0a0a;border:1px solid var(--brd);border-radius:8px;padding:12px;font-family:var(--mono);font-size:12px;color:var(--g1);max-height:150px;overflow-y:auto;white-space:pre-wrap}
+</style>
+</head>
+<body>
+<nav class="nav"><div class="nav-inner"><a href="/" class="nav-logo"><img src="/valkey-logo.svg" alt="Valkey"><span class="accent">for ai</span></a><div class="nav-links"><a href="/#use-cases">Use Cases</a><a href="/#frameworks">Frameworks</a><a href="https://github.com/meet-bhagdev/valkeyforai/tree/main" target="_blank">GitHub</a></div></div></nav>
+<script>if(window.self!==window.top)document.querySelector('.nav').style.display='none'</script>
+<div class="container">
+<div class="live-badge">LIVE - Connected to Valkey 9</div>
+<h1>Rate Limiting</h1>
+<p class="sub">Real INCR + EXPIRE pipeline against a live Valkey instance. Click fast and watch yourself get rate limited.</p>
+
+<div class="stats">
+<div class="stat"><div class="num" style="color:var(--green)" id="allowed">0</div><div class="lbl">Allowed</div></div>
+<div class="stat"><div class="num" style="color:var(--red)" id="denied">0</div><div class="lbl">Denied</div></div>
+<div class="stat"><div class="num" style="color:var(--g1)" id="lastLatency">-</div><div class="lbl">Latency</div></div>
+</div>
+
+<div class="panel">
+<h3>Fixed Window Rate Limiter</h3>
+<p style="font-size:13px;color:var(--t2);margin-bottom:12px">Each click runs INCR + EXPIRE in a pipeline. The key rotates every window. Try clicking past the limit.</p>
+<div class="bar-wrap"><div class="bar-fill" id="bar" style="width:0%"></div><div class="bar-label" id="barLabel">0 / 10</div></div>
+<div class="btn-row">
+<button class="btn btn-primary" onclick="checkLimit()">Send Request</button>
+<button class="btn btn-danger" onclick="burst()">Burst 5x</button>
+<button class="btn btn-secondary" onclick="resetLimit()">Reset</button>
+<span style="font-size:12px;color:var(--t3);margin-left:8px">Limit: 10 req / 60s window</span>
+</div>
+</div>
+
+<div class="panel">
+<h3>Request Log</h3>
+<div class="log" id="log"></div>
+</div>
+
+<div class="panel">
+<h3>Valkey Commands</h3>
+<div class="cmd-log" id="cmdLog">// Commands will appear here...</div>
+</div>
+</div>
+
+<script>
+const API = "http://44.211.193.71:8000";
+let allowedCount = 0, deniedCount = 0;
+
+function logCmd(cmd) {
+  const el = document.getElementById("cmdLog");
+  el.textContent += "\n> " + cmd;
+  el.scrollTop = el.scrollHeight;
+}
+
+function updateBar(current, limit) {
+  const pct = Math.min(100, (current / limit) * 100);
+  const bar = document.getElementById("bar");
+  bar.style.width = pct + "%";
+  bar.className = "bar-fill" + (current > limit ? " full" : "");
+  document.getElementById("barLabel").textContent = current + " / " + limit;
+}
+
+async function checkLimit() {
+  const res = await fetch(API + "/api/rate-limit/check", {
+    method:"POST", headers:{"Content-Type":"application/json"},
+    body: JSON.stringify({user_id:"demo-user", max_requests:10, window:60})
+  });
+  const data = await res.json();
+  document.getElementById("lastLatency").textContent = data.latency_ms + "ms";
+  data.commands.forEach(c => logCmd(c));
+
+  if (data.allowed) {
+    allowedCount++;
+    document.getElementById("allowed").textContent = allowedCount;
+  } else {
+    deniedCount++;
+    document.getElementById("denied").textContent = deniedCount;
+  }
+  updateBar(data.current, data.limit);
+
+  const log = document.getElementById("log");
+  const cls = data.allowed ? "allowed" : "denied";
+  const icon = data.allowed ? "✅" : "❌";
+  log.innerHTML = '<div class="log-entry ' + cls + '"><span>' + icon + ' Request #' + data.current + ' - ' + (data.allowed ? "ALLOWED" : "DENIED") + '</span><span>' + data.latency_ms + 'ms</span></div>' + log.innerHTML;
+}
+
+async function burst() {
+  for (let i = 0; i < 5; i++) {
+    await checkLimit();
+    await new Promise(r => setTimeout(r, 50));
+  }
+}
+
+async function resetLimit() {
+  await fetch(API + "/api/rate-limit/reset", {method:"POST"});
+  allowedCount = 0; deniedCount = 0;
+  document.getElementById("allowed").textContent = 0;
+  document.getElementById("denied").textContent = 0;
+  updateBar(0, 10);
+  document.getElementById("log").innerHTML = "";
+  logCmd("DEL demo:rl:*");
+}
+</script>
+</body>
+</html>

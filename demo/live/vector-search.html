@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Live Vector Search Demo - Valkey for AI</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+:root{--bg:#0a0a0a;--card:#141414;--brd:#222;--t1:#e5e5e5;--t2:#888;--t3:#555;--g1:#a855f7;--g2:#6366f1;--green:#22c55e;--red:#ef4444;--font:'Inter',sans-serif;--mono:'JetBrains Mono',monospace}
+body{font-family:var(--font);background:var(--bg);color:var(--t1);line-height:1.5;min-height:100vh}
+.container{max-width:900px;margin:0 auto;padding:32px 24px}
+h1{font-size:28px;font-weight:800;margin-bottom:4px}
+.sub{color:var(--t2);font-size:14px;margin-bottom:24px}
+.live-badge{display:inline-block;background:#22c55e22;color:#22c55e;font-size:11px;font-weight:700;padding:3px 10px;border-radius:100px;margin-bottom:16px}
+.panel{background:var(--card);border:1px solid var(--brd);border-radius:12px;padding:20px;margin-bottom:16px}
+.panel h3{font-size:14px;font-weight:700;margin-bottom:12px;color:var(--t2)}
+input,select{background:#0a0a0a;border:1px solid var(--brd);border-radius:8px;padding:8px 12px;color:var(--t1);font-family:var(--font);font-size:14px;width:100%}
+.btn{padding:8px 20px;border-radius:8px;font-size:13px;font-weight:600;border:none;cursor:pointer;transition:.2s}
+.btn-primary{background:linear-gradient(135deg,var(--g1),var(--g2));color:#fff}
+.btn-primary:hover{opacity:.9}
+.btn-secondary{background:var(--card);color:var(--t1);border:1px solid var(--brd)}
+.btn-row{display:flex;gap:8px;margin-top:12px;flex-wrap:wrap}
+.result{background:#0a0a0a;border:1px solid var(--brd);border-radius:8px;padding:12px;margin-top:8px;font-size:13px}
+.result .key{color:var(--g1);font-family:var(--mono);font-size:12px}
+.result .content{margin:4px 0}
+.result .score{color:var(--t2);font-size:12px}
+.cmd-log{background:#0a0a0a;border:1px solid var(--brd);border-radius:8px;padding:12px;font-family:var(--mono);font-size:12px;color:var(--g1);max-height:200px;overflow-y:auto;white-space:pre-wrap}
+.stats{display:flex;gap:16px;margin-bottom:16px;flex-wrap:wrap}
+.stat{text-align:center}
+.stat .num{font-size:24px;font-weight:800;color:var(--g1)}
+.stat .lbl{font-size:11px;color:var(--t3);text-transform:uppercase}
+.latency{color:var(--green);font-weight:600}
+.tag{display:inline-block;padding:2px 8px;border-radius:4px;font-size:11px;background:#a855f722;color:var(--g1);margin-right:4px}
+</style>
+</head>
+<body>
+<nav class="nav"><div class="nav-inner"><a href="/" class="nav-logo"><img src="/valkey-logo.svg" alt="Valkey"><span class="accent">for ai</span></a><div class="nav-links"><a href="/#use-cases">Use Cases</a><a href="/#frameworks">Frameworks</a><a href="https://github.com/meet-bhagdev/valkeyforai/tree/main" target="_blank">GitHub</a></div></div></nav>
+<script>if(window.self!==window.top)document.querySelector('.nav').style.display='none'</script>
+<div class="container">
+<div class="live-badge">LIVE - Connected to Valkey 9</div>
+<h1>Vector Search</h1>
+<p class="sub">Real FT.CREATE, HSET, and FT.SEARCH KNN running against a live Valkey instance. Every result is a real query.</p>
+
+<div class="stats">
+<div class="stat"><div class="num" id="docCount">0</div><div class="lbl">Documents</div></div>
+<div class="stat"><div class="num" id="queryCount">0</div><div class="lbl">Queries</div></div>
+<div class="stat"><div class="num latency" id="lastLatency">-</div><div class="lbl">Last Latency</div></div>
+</div>
+
+<div class="panel">
+<h3>1. Create Index + Load Documents</h3>
+<p style="font-size:13px;color:var(--t2);margin-bottom:12px">Creates an HNSW index with 32-dim COSINE vectors and loads 6 sample documents.</p>
+<button class="btn btn-primary" onclick="setup()">FT.CREATE + HSET 6 docs</button>
+<div id="setupResult"></div>
+</div>
+
+<div class="panel">
+<h3>2. Search</h3>
+<input type="text" id="query" placeholder="Type a search query..." value="what is valkey">
+<div class="btn-row">
+<button class="btn btn-primary" onclick="search()">FT.SEARCH KNN</button>
+<select id="k" style="width:auto"><option value="3">K=3</option><option value="5">K=5</option><option value="1">K=1</option></select>
+</div>
+<div id="searchResults"></div>
+</div>
+
+<div class="panel">
+<h3>Valkey Commands</h3>
+<div class="cmd-log" id="cmdLog">// Commands will appear here...</div>
+</div>
+</div>
+
+<script>
+const API = "http://44.211.193.71:8000";
+let queries = 0;
+
+function log(cmd) {
+  const el = document.getElementById("cmdLog");
+  el.textContent += "\n> " + cmd;
+  el.scrollTop = el.scrollHeight;
+}
+
+async function setup() {
+  const res = await fetch(API + "/api/vector-search/setup", {method:"POST"});
+  const data = await res.json();
+  document.getElementById("docCount").textContent = data.docs;
+  document.getElementById("setupResult").innerHTML = '<div class="result" style="color:var(--green)">Index created. ' + data.docs + ' documents loaded.</div>';
+  data.commands.forEach(c => log(c));
+}
+
+async function search() {
+  const query = document.getElementById("query").value;
+  const k = document.getElementById("k").value;
+  const res = await fetch(API + "/api/vector-search/search", {
+    method: "POST", headers: {"Content-Type":"application/json"},
+    body: JSON.stringify({query, k: parseInt(k)})
+  });
+  const data = await res.json();
+  queries++;
+  document.getElementById("queryCount").textContent = queries;
+  document.getElementById("lastLatency").textContent = data.latency_ms + "ms";
+  log(data.command);
+
+  let html = "";
+  data.docs.forEach((d,i) => {
+    html += '<div class="result"><div class="key">' + d.key + '</div><div class="content">' + d.content + '</div><div class="score">Score: ' + d.score.toFixed(4) + ' <span class="tag">' + d.category + '</span></div></div>';
+  });
+  document.getElementById("searchResults").innerHTML = html;
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Live Semantic Caching Demo - Valkey for AI</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+:root{--bg:#0a0a0a;--card:#141414;--brd:#222;--t1:#e5e5e5;--t2:#888;--t3:#555;--g1:#a855f7;--g2:#6366f1;--green:#22c55e;--red:#ef4444;--font:'Inter',sans-serif;--mono:'JetBrains Mono',monospace}
+body{font-family:var(--font);background:var(--bg);color:var(--t1);line-height:1.5;min-height:100vh}
+.container{max-width:900px;margin:0 auto;padding:32px 24px}
+h1{font-size:28px;font-weight:800;margin-bottom:4px}
+.sub{color:var(--t2);font-size:14px;margin-bottom:24px}
+.live-badge{display:inline-block;background:#22c55e22;color:#22c55e;font-size:11px;font-weight:700;padding:3px 10px;border-radius:100px;margin-bottom:16px}
+.panel{background:var(--card);border:1px solid var(--brd);border-radius:12px;padding:20px;margin-bottom:16px}
+.panel h3{font-size:14px;font-weight:700;margin-bottom:12px;color:var(--t2)}
+input{background:#0a0a0a;border:1px solid var(--brd);border-radius:8px;padding:8px 12px;color:var(--t1);font-family:var(--font);font-size:14px;width:100%}
+.btn{padding:8px 20px;border-radius:8px;font-size:13px;font-weight:600;border:none;cursor:pointer;transition:.2s}
+.btn-primary{background:linear-gradient(135deg,var(--g1),var(--g2));color:#fff}
+.btn-primary:hover{opacity:.9}
+.btn-secondary{background:var(--card);color:var(--t1);border:1px solid var(--brd)}
+.btn-row{display:flex;gap:8px;margin-top:12px;flex-wrap:wrap}
+.quick-btn{padding:6px 14px;border-radius:100px;font-size:12px;border:1px solid var(--brd);background:transparent;color:var(--t2);cursor:pointer}
+.quick-btn:hover{border-color:var(--g1);color:var(--t1)}
+.result{background:#0a0a0a;border:1px solid var(--brd);border-radius:8px;padding:12px;margin-top:8px;font-size:13px}
+.hit{border-color:var(--green);background:#22c55e08}
+.miss{border-color:var(--red);background:#ef444408}
+.cmd-log{background:#0a0a0a;border:1px solid var(--brd);border-radius:8px;padding:12px;font-family:var(--mono);font-size:12px;color:var(--g1);max-height:200px;overflow-y:auto;white-space:pre-wrap}
+.stats{display:flex;gap:16px;margin-bottom:16px;flex-wrap:wrap}
+.stat{text-align:center}
+.stat .num{font-size:24px;font-weight:800}
+.stat .lbl{font-size:11px;color:var(--t3);text-transform:uppercase}
+.latency{color:var(--green)}
+</style>
+</head>
+<body>
+<nav class="nav"><div class="nav-inner"><a href="/" class="nav-logo"><img src="/valkey-logo.svg" alt="Valkey"><span class="accent">for ai</span></a><div class="nav-links"><a href="/#use-cases">Use Cases</a><a href="/#frameworks">Frameworks</a><a href="https://github.com/meet-bhagdev/valkeyforai/tree/main" target="_blank">GitHub</a></div></div></nav>
+<script>if(window.self!==window.top)document.querySelector('.nav').style.display='none'</script>
+<div class="container">
+<div class="live-badge">LIVE - Connected to Valkey 9</div>
+<h1>Semantic Caching</h1>
+<p class="sub">Cache a response, then query with similar text. Real FT.SEARCH KNN with cosine distance scores from a live Valkey instance.</p>
+
+<div class="stats">
+<div class="stat"><div class="num" style="color:var(--green)" id="hits">0</div><div class="lbl">Cache Hits</div></div>
+<div class="stat"><div class="num" style="color:var(--red)" id="misses">0</div><div class="lbl">Misses</div></div>
+<div class="stat"><div class="num latency" id="lastLatency">-</div><div class="lbl">Last Latency</div></div>
+</div>
+
+<div class="panel">
+<h3>1. Set Up Cache Index</h3>
+<button class="btn btn-primary" onclick="setupCache()">FT.CREATE cache index</button>
+<span id="setupStatus" style="margin-left:12px;font-size:13px;color:var(--t2)"></span>
+</div>
+
+<div class="panel">
+<h3>2. Cache a Response</h3>
+<input type="text" id="storePrompt" placeholder="Prompt..." value="What is Valkey?" style="margin-bottom:8px">
+<input type="text" id="storeResponse" placeholder="Response..." value="Valkey is an open-source, high-performance in-memory data store.">
+<button class="btn btn-primary" onclick="storeEntry()" style="margin-top:8px">HSET + EXPIRE</button>
+<div class="btn-row" style="margin-top:8px">
+<button class="quick-btn" onclick="presetStore('How does vector search work?','Vector search uses HNSW indexes to find nearest neighbors in sub-millisecond time.')">+ vector search Q&A</button>
+<button class="quick-btn" onclick="presetStore('What is semantic caching?','Semantic caching stores LLM responses indexed by meaning, not exact text match.')">+ caching Q&A</button>
+</div>
+<div id="storeResult"></div>
+</div>
+
+<div class="panel">
+<h3>3. Query the Cache</h3>
+<input type="text" id="queryPrompt" placeholder="Ask something..." value="Explain Valkey to me">
+<div class="btn-row">
+<button class="btn btn-primary" onclick="queryCache()">FT.SEARCH KNN</button>
+</div>
+<div class="btn-row" style="margin-top:4px">
+<button class="quick-btn" onclick="setQuery('What is Valkey?')">What is Valkey?</button>
+<button class="quick-btn" onclick="setQuery('Explain Valkey to me')">Explain Valkey to me</button>
+<button class="quick-btn" onclick="setQuery('How to cook pasta')">How to cook pasta</button>
+<button class="quick-btn" onclick="setQuery('Tell me about vector search')">Tell me about vector search</button>
+</div>
+<div id="queryResult"></div>
+</div>
+
+<div class="panel">
+<h3>Valkey Commands</h3>
+<div class="cmd-log" id="cmdLog">// Commands will appear here...</div>
+</div>
+</div>
+
+<script>
+const API = "http://44.211.193.71:8000";
+let hitCount = 0, missCount = 0;
+
+function log(cmd) {
+  const el = document.getElementById("cmdLog");
+  el.textContent += "\n> " + cmd;
+  el.scrollTop = el.scrollHeight;
+}
+function setQuery(t) { document.getElementById("queryPrompt").value = t; }
+function presetStore(p, r) { document.getElementById("storePrompt").value = p; document.getElementById("storeResponse").value = r; }
+
+async function setupCache() {
+  const res = await fetch(API + "/api/semantic-cache/setup", {method:"POST"});
+  const data = await res.json();
+  document.getElementById("setupStatus").textContent = "Index created";
+  log(data.command);
+}
+
+async function storeEntry() {
+  const prompt = document.getElementById("storePrompt").value;
+  const response = document.getElementById("storeResponse").value;
+  const res = await fetch(API + "/api/semantic-cache/store", {
+    method:"POST", headers:{"Content-Type":"application/json"},
+    body: JSON.stringify({prompt, response})
+  });
+  const data = await res.json();
+  document.getElementById("storeResult").innerHTML = '<div class="result">Cached at <code>' + data.key + '</code> in ' + data.latency_ms + 'ms</div>';
+  data.commands.forEach(c => log(c));
+}
+
+async function queryCache() {
+  const prompt = document.getElementById("queryPrompt").value;
+  const res = await fetch(API + "/api/semantic-cache/query", {
+    method:"POST", headers:{"Content-Type":"application/json"},
+    body: JSON.stringify({prompt, threshold: 0.3})
+  });
+  const data = await res.json();
+  document.getElementById("lastLatency").textContent = data.latency_ms + "ms";
+  log(data.command);
+
+  if (data.hit) {
+    hitCount++;
+    document.getElementById("hits").textContent = hitCount;
+    document.getElementById("queryResult").innerHTML = '<div class="result hit"><strong>CACHE HIT</strong> (score: ' + data.score + ', ' + data.latency_ms + 'ms)<br>Matched: "' + data.cached_prompt + '"<br>Response: ' + data.cached_response + '</div>';
+  } else {
+    missCount++;
+    document.getElementById("misses").textContent = missCount;
+    document.getElementById("queryResult").innerHTML = '<div class="result miss"><strong>CACHE MISS</strong> (nearest score: ' + data.score + ', ' + data.latency_ms + 'ms)<br>No similar prompt found above threshold.</div>';
+  }
+}
+</script>
+</body>
+</html>
