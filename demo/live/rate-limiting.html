@@ -6,6 +6,14 @@
 <title>Live Rate Limiting Demo - Valkey for AI</title>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
 <style>
+.nav{position:sticky;top:0;z-index:100;background:rgba(0,0,0,.8);backdrop-filter:blur(20px);border-bottom:1px solid #222;padding:16px 32px}
+.nav-inner{max-width:1200px;margin:0 auto;display:flex;align-items:center;justify-content:space-between}
+.nav-logo{display:flex;align-items:center;gap:8px;font-weight:700;font-size:16px;color:#e5e5e5;text-decoration:none}
+.nav-logo img{height:24px}
+.accent{color:#6366f1}
+.nav-links{display:flex;gap:24px;align-items:center;font-size:14px}
+.nav-links a{color:#888;text-decoration:none}
+.nav-links a:hover{color:#e5e5e5}
 *{margin:0;padding:0;box-sizing:border-box}
 :root{--bg:#0a0a0a;--card:#141414;--brd:#222;--t1:#e5e5e5;--t2:#888;--t3:#555;--g1:#a855f7;--g2:#6366f1;--green:#22c55e;--red:#ef4444;--font:'Inter',sans-serif;--mono:'JetBrains Mono',monospace}
 body{font-family:var(--font);background:var(--bg);color:var(--t1);line-height:1.5;min-height:100vh}
@@ -74,7 +82,7 @@ h1{font-size:28px;font-weight:800;margin-bottom:4px}
 </div>
 
 <script>
-const API = "http://44.211.193.71:8000";
+const API = "https://2vipd3rcpj.execute-api.us-east-1.amazonaws.com";
 let allowedCount = 0, deniedCount = 0;
 
 function logCmd(cmd) {
