@@ -38,6 +38,7 @@ def llm(prompt):
     resp = bedrock.invoke_model(
         modelId="anthropic.claude-3-haiku-20240307-v1:0",
         body=json.dumps({"anthropic_version": "bedrock-2023-05-31", "max_tokens": 300,
+                         "system": "You are a helpful technical assistant. Valkey is an open-source, high-performance in-memory data store. It was forked from Redis and is maintained by the Linux Foundation. It supports strings, hashes, lists, sets, sorted sets, streams, and vector search via the valkey-search module. It is used for caching, session storage, real-time analytics, and AI workloads like semantic caching and vector similarity search. Answer concisely.",
                          "messages": [{"role": "user", "content": prompt}]}),
     )
     return json.loads(resp["body"].read())["content"][0]["text"]
