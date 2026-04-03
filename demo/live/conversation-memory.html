@@ -63,7 +63,7 @@ input{background:#0a0a0a;border:1px solid #222;border-radius:8px;padding:10px 14
 <input type="text" id="msgInput" placeholder="Type a message..." onkeydown="if(event.key==='Enter')sendMsg()">
 <div class="row">
 <button class="btn btn-p" onclick="sendMsg()">Send (RPUSH)</button>
-<button class="btn btn-s" onclick="loadHistory()">Load History (LRANGE)</button>
+<button class="btn btn-s" onclick="loadHistory()">Reload (LRANGE)</button>
 <button class="btn btn-s" onclick="resetConv()">Reset</button>
 </div>
 <div class="row">
@@ -112,29 +112,28 @@ async function sendMsg(){
   const content=document.getElementById('msgInput').value;
   if(!content)return;
   document.getElementById('msgInput').value='';
-
-  // Send user message
-  let r=await(await fetch(API+'/api/conversation/send',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({session_id:session,role:'user',content})})).json();
-  r.commands.forEach(c=>log(c));
-  document.getElementById('nMsg').textContent=r.length;
-  document.getElementById('lastMs').textContent=r.latency_ms+'ms';
-
-  // Fake assistant response (we're demoing the storage, not the LLM)
-  const reply="Got it. Your message has been stored in Valkey using RPUSH. The session will auto-expire based on the TTL.";
-  let r2=await(await fetch(API+'/api/conversation/send',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({session_id:session,role:'assistant',content:reply})})).json();
-  r2.commands.forEach(c=>log(c));
-  document.getElementById('nMsg').textContent=r2.length;
-
-  loadHistory();
+  try{
+    let r=await(await fetch(API+'/api/conversation/send',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({session_id:session,role:'user',content})})).json();
+    r.commands.forEach(c=>log(c));
+    document.getElementById('nMsg').textContent=r.length;
+    document.getElementById('lastMs').textContent=r.latency_ms+'ms';
+    loadHistory();
+  }catch(e){
+    document.getElementById('chatBox').innerHTML='<div style="color:#ef4444">Error: '+e.message+'</div>';
+  }
 }
 
 async function loadHistory(){
-  const r=await(await fetch(API+'/api/conversation/history',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({session_id:session,last_n:50})})).json();
-  log(r.command);
-  document.getElementById('nMsg').textContent=r.count;
-  document.getElementById('lastMs').textContent=r.latency_ms+'ms';
-  document.getElementById('ttl').textContent=r.ttl>0?r.ttl+'s':'-';
-  renderMessages(r.messages);
+  try{
+    const r=await(await fetch(API+'/api/conversation/history',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({session_id:session,last_n:50})})).json();
+    log(r.command);
+    document.getElementById('nMsg').textContent=r.count;
+    document.getElementById('lastMs').textContent=r.latency_ms+'ms';
+    document.getElementById('ttl').textContent=r.ttl>0?r.ttl+'s':'-';
+    renderMessages(r.messages);
+  }catch(e){
+    document.getElementById('chatBox').innerHTML='<div style="color:#ef4444">Error loading history: '+e.message+'</div>';
+  }
 }
 
 async function resetConv(){
