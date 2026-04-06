@@ -180,17 +180,19 @@ function outcomeHTML(data){
   if(data.hit){
     return `<div class="outcome hit">
       <span class="tag hit-tag">CACHE HIT</span>
+      <div style="font-size:13px;color:#22c55e;margin:8px 0">Served from Valkey cache instead of calling the LLM. Your prompt was semantically similar to a cached prompt, so Valkey returned the stored response. No LLM call = faster response + zero inference cost.</div>
       <div class="response-text">${data.response}</div>
       <div class="timing">
         Matched: "${data.cached_prompt}" (cosine distance: ${data.score})<br>
         Embed: <span>${data.latency.embed_ms}ms</span> +
         Valkey search: <span class="fast">${data.latency.search_ms}ms</span> =
-        Total: <span class="fast">${data.latency.total_ms}ms</span>
+        Total: <span class="fast">${data.latency.total_ms}ms</span> (no LLM cost)
       </div>
     </div>`;
   } else {
     return `<div class="outcome miss">
       <span class="tag miss-tag">CACHE MISS</span>
+      <div style="font-size:13px;color:#ef4444;margin:8px 0">No semantically similar prompt found in cache. Had to call Claude for a fresh response - this costs money and takes seconds instead of milliseconds.</div>
       <div class="response-text">${data.response}</div>
       <div class="timing">
         ${data.score ? 'Nearest match distance: '+data.score+' (above 0.30 threshold)' : 'Cache is empty'}<br>
@@ -267,7 +269,7 @@ async function doStep4(){
     const speedup=Math.round(missLatency/hitLatency);
     document.getElementById('speedup').textContent=speedup+'x faster';
     document.getElementById('speedupDetail').textContent=
-      'Cache hit: '+hitLatency+'ms vs LLM call: '+missLatency+'ms. Same answer, '+speedup+'x faster, $0 LLM cost.';
+      'Cache hit: '+hitLatency+'ms vs LLM call: '+missLatency+'ms. Same answer, '+speedup+'x faster, $0 LLM cost. At scale, semantic caching can cut LLM spend by 60%+ by serving repeated and similar queries from Valkey.';
     document.getElementById('summary').style.display='block';
   }
   document.getElementById('freeForm').style.display='block';
