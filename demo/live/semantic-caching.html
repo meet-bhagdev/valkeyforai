@@ -15,164 +15,278 @@
 .nav-links a{color:#888;text-decoration:none}
 .nav-links a:hover{color:#e5e5e5}
 *{margin:0;padding:0;box-sizing:border-box}
-body{font-family:'Inter',sans-serif;background:#0a0a0a;color:#e5e5e5;line-height:1.5}
+body{font-family:'Inter',sans-serif;background:#0a0a0a;color:#e5e5e5;line-height:1.6}
 a{color:inherit}
-.container{max-width:900px;margin:0 auto;padding:32px 24px}
-h1{font-size:28px;font-weight:800;margin-bottom:4px}
+.wrap{display:flex;max-width:1200px;margin:0 auto;padding:24px;gap:24px}
+.main{flex:1;min-width:0}
+.sidebar{width:340px;flex-shrink:0;position:sticky;top:80px;align-self:flex-start;max-height:calc(100vh - 100px);overflow-y:auto}
+h1{font-size:26px;font-weight:800;margin-bottom:4px}
 .sub{color:#888;font-size:14px;margin-bottom:24px}
-.live{display:inline-block;background:#22c55e22;color:#22c55e;font-size:11px;font-weight:700;padding:3px 10px;border-radius:100px;margin-bottom:16px}
-.panel{background:#141414;border:1px solid #222;border-radius:12px;padding:20px;margin-bottom:16px}
-.panel h3{font-size:14px;font-weight:700;margin-bottom:12px;color:#888}
-input{background:#0a0a0a;border:1px solid #222;border-radius:8px;padding:10px 14px;color:#e5e5e5;font-family:inherit;font-size:14px;width:100%}
-.btn{padding:9px 20px;border-radius:8px;font-size:13px;font-weight:600;border:none;cursor:pointer;transition:.15s}
+.live{display:inline-block;background:#22c55e22;color:#22c55e;font-size:11px;font-weight:700;padding:3px 10px;border-radius:100px;margin-bottom:12px}
+.step{background:#141414;border:1px solid #222;border-radius:12px;padding:20px;margin-bottom:16px;transition:opacity .3s}
+.step.locked{opacity:.3;pointer-events:none}
+.step-num{display:inline-block;width:24px;height:24px;border-radius:50%;background:#222;color:#888;font-size:12px;font-weight:700;text-align:center;line-height:24px;margin-right:8px}
+.step.done .step-num{background:#22c55e;color:#fff}
+.step.active .step-num{background:linear-gradient(135deg,#a855f7,#6366f1);color:#fff}
+.step h3{display:inline;font-size:15px;font-weight:700}
+.step .explain{color:#888;font-size:13px;margin:10px 0}
+.step .prompt-display{background:#0a0a0a;border:1px solid #222;border-radius:8px;padding:10px 14px;font-size:14px;margin:8px 0;color:#e5e5e5;font-family:'JetBrains Mono',monospace}
+.btn{padding:9px 20px;border-radius:8px;font-size:13px;font-weight:600;border:none;cursor:pointer;transition:.15s;margin-top:8px}
 .btn-p{background:linear-gradient(135deg,#a855f7,#6366f1);color:#fff}
 .btn-p:hover{opacity:.9}
-.btn-s{background:#141414;color:#e5e5e5;border:1px solid #222}
-.row{display:flex;gap:8px;margin-top:10px;flex-wrap:wrap;align-items:center}
-.stats{display:flex;gap:20px;margin-bottom:20px;flex-wrap:wrap}
-.stat .n{font-size:22px;font-weight:800}
-.stat .l{font-size:11px;color:#555;text-transform:uppercase}
-.hit-color{color:#22c55e}
-.miss-color{color:#ef4444}
-.result{background:#0a0a0a;border:1px solid #222;border-radius:8px;padding:14px;margin-top:10px;font-size:14px}
-.result.hit{border-color:#22c55e;background:#22c55e08}
-.result.miss{border-color:#ef4444;background:#ef444408}
-.result .label{font-size:12px;font-weight:700;margin-bottom:6px}
-.result .response{margin:8px 0;line-height:1.6}
-.result .meta{font-size:12px;color:#888;margin-top:8px}
-.latency-bar{display:flex;align-items:center;gap:8px;margin-top:6px;font-size:12px}
-.latency-bar .bar{height:8px;border-radius:4px;min-width:2px;transition:width .3s}
-.latency-bar .bar.fast{background:#22c55e}
-.latency-bar .bar.slow{background:#ef4444}
-.cmd{background:#0a0a0a;border:1px solid #222;border-radius:8px;padding:12px;font-family:'JetBrains Mono',monospace;font-size:12px;color:#a855f7;max-height:220px;overflow-y:auto;white-space:pre-wrap;word-break:break-all}
-.quick{padding:6px 14px;border-radius:100px;font-size:12px;border:1px solid #222;background:transparent;color:#888;cursor:pointer}
-.quick:hover{border-color:#a855f7;color:#e5e5e5}
-.history{margin-top:12px}
-.history-item{display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid #1a1a1a;font-size:13px}
-.history-item .prompt{flex:1;color:#e5e5e5}
-.history-item .badge{padding:2px 8px;border-radius:4px;font-size:11px;font-weight:600}
-.history-item .badge.hit{background:#22c55e22;color:#22c55e}
-.history-item .badge.miss{background:#ef444422;color:#ef4444}
-.history-item .ms{color:#888;font-family:'JetBrains Mono',monospace;font-size:11px;width:80px;text-align:right}
+.btn-p:disabled{opacity:.5;cursor:wait}
+.outcome{margin-top:12px;border-radius:8px;padding:14px;font-size:13px;line-height:1.6}
+.outcome.miss{background:#ef444410;border:1px solid #ef444444}
+.outcome.hit{background:#22c55e10;border:1px solid #22c55e44}
+.outcome .tag{display:inline-block;padding:2px 10px;border-radius:100px;font-size:11px;font-weight:700;margin-bottom:8px}
+.outcome .tag.miss-tag{background:#ef444422;color:#ef4444}
+.outcome .tag.hit-tag{background:#22c55e22;color:#22c55e}
+.outcome .response-text{color:#ccc;margin:8px 0;padding:10px;background:#0a0a0a;border-radius:6px;font-size:13px}
+.outcome .timing{font-family:'JetBrains Mono',monospace;font-size:12px;color:#888;margin-top:8px}
+.outcome .timing span{font-weight:600}
+.outcome .timing .fast{color:#22c55e}
+.outcome .timing .slow{color:#ef4444}
+.compare{background:linear-gradient(135deg,#22c55e11,#a855f711);border:1px solid #22c55e33;border-radius:12px;padding:20px;margin-top:16px;text-align:center}
+.compare .big{font-size:36px;font-weight:900;background:linear-gradient(135deg,#22c55e,#a855f7);-webkit-background-clip:text;-webkit-text-fill-color:transparent}
+.compare .detail{color:#888;font-size:13px;margin-top:4px}
+.sidebar-panel{background:#141414;border:1px solid #222;border-radius:12px;padding:16px;margin-bottom:16px}
+.sidebar-panel h4{font-size:13px;font-weight:700;color:#888;margin-bottom:10px}
+.cmd-log{font-family:'JetBrains Mono',monospace;font-size:11px;color:#a855f7;line-height:1.8;white-space:pre-wrap;word-break:break-all}
+.cmd-log .comment{color:#555}
+.cmd-log .new{animation:flash .5s}
+@keyframes flash{from{background:#a855f722}to{background:transparent}}
+.free-input{background:#141414;border:1px solid #222;border-radius:12px;padding:20px;margin-top:16px}
+.free-input input{background:#0a0a0a;border:1px solid #222;border-radius:8px;padding:10px 14px;color:#e5e5e5;font-family:inherit;font-size:14px;width:100%}
+.free-input .result{margin-top:10px}
+.deploy{background:#141414;border:1px solid #333;border-radius:12px;padding:16px;margin-top:16px;font-size:13px;color:#888}
+.deploy code{background:#0a0a0a;padding:8px 12px;border-radius:6px;display:block;margin-top:8px;font-family:'JetBrains Mono',monospace;font-size:11px;color:#888;white-space:pre}
+@media(max-width:900px){.wrap{flex-direction:column}.sidebar{width:100%;position:static;max-height:none}}
 </style>
 </head>
 <body>
 <nav class="nav"><div class="nav-inner"><a href="/" class="nav-logo"><img src="/valkey-logo.svg" alt="Valkey"><span class="accent">for ai</span></a><div class="nav-links"><a href="/#use-cases">Use Cases</a><a href="/#frameworks">Frameworks</a><a href="https://github.com/meet-bhagdev/valkeyforai/tree/main" target="_blank">GitHub</a></div></div></nav>
 <script>if(window.self!==window.top)document.querySelector('.nav').style.display='none'</script>
-<div class="container">
-<div class="live">LIVE - Real Valkey 9 + Bedrock Claude Haiku + Titan Embeddings</div>
+
+<div class="wrap">
+<div class="main">
+<div class="live">LIVE - Real Valkey 9 + Amazon Bedrock</div>
 <h1>Semantic Caching</h1>
-<p class="sub">Ask a question and Claude answers it (takes ~2s). Ask a similar question and the cached response comes back in ~1ms. Real embeddings, real LLM, real cache.</p>
+<p class="sub">LLM calls are slow and expensive. Valkey can cache responses by <em>meaning</em>, not just exact text. Walk through it step by step.</p>
 
-<div class="stats">
-<div class="stat"><div class="n hit-color" id="nHit">0</div><div class="l">Cache Hits</div></div>
-<div class="stat"><div class="n miss-color" id="nMiss">0</div><div class="l">Cache Misses</div></div>
-<div class="stat"><div class="n" style="color:#a855f7" id="saved">0ms</div><div class="l">Time Saved</div></div>
-</div>
-
-<div class="panel">
-<h3>1. Set Up Cache</h3>
-<button class="btn btn-p" onclick="setupCache()">FT.CREATE cache index</button>
-<span id="cacheStatus" style="margin-left:12px;font-size:13px;color:#888"></span>
+<!-- STEP 1 -->
+<div class="step active" id="s1">
+<span class="step-num">1</span><h3>Create a cache index</h3>
+<p class="explain">This tells Valkey to build an HNSW vector index. When we store a prompt later, Valkey will index its embedding so we can search by meaning.</p>
+<button class="btn btn-p" id="b1" onclick="doStep1()">Run FT.CREATE</button>
+<div id="r1"></div>
 </div>
 
-<div class="panel">
-<h3>2. Ask a Question</h3>
-<p style="font-size:13px;color:#888;margin-bottom:10px">First query calls Claude (~2s). Similar queries hit the cache (~1ms). Try asking the same thing in different words.</p>
-<input type="text" id="prompt" placeholder="Ask anything..." value="What is Valkey and what is it used for?">
-<div class="row">
-<button class="btn btn-p" onclick="ask()" id="askBtn">Ask (checks cache first)</button>
-<button class="btn btn-s" onclick="setupCache()">Flush Cache</button>
-</div>
-<div class="row">
-<button class="quick" onclick="sp('What is Valkey and what is it used for?')">What is Valkey?</button>
-<button class="quick" onclick="sp('Explain Valkey to me')">Explain Valkey</button>
-<button class="quick" onclick="sp('How does vector search work?')">Vector search?</button>
-<button class="quick" onclick="sp('What are HNSW indexes?')">HNSW indexes?</button>
-<button class="quick" onclick="sp('Best pasta recipe')">Pasta recipe</button>
-</div>
-<div id="result"></div>
+<!-- STEP 2 -->
+<div class="step locked" id="s2">
+<span class="step-num">2</span><h3>Ask Claude a question</h3>
+<p class="explain">We'll embed this prompt with Amazon Titan, check the cache (it's empty, so it'll miss), call Claude Haiku for an answer, then store the response + embedding in Valkey for next time.</p>
+<div class="prompt-display">"What is Valkey and what is it used for?"</div>
+<button class="btn btn-p" id="b2" onclick="doStep2()">Run</button>
+<div id="r2"></div>
 </div>
 
-<div class="panel">
-<h3>Query History</h3>
-<div class="history" id="history"><div style="color:#555;font-size:13px">Ask a question to start...</div></div>
+<!-- STEP 3 -->
+<div class="step locked" id="s3">
+<span class="step-num">3</span><h3>Ask the same thing differently</h3>
+<p class="explain">This is a different string, but it means the same thing. Valkey will find the cached response because the embeddings are similar.</p>
+<div class="prompt-display">"Explain Valkey to me"</div>
+<button class="btn btn-p" id="b3" onclick="doStep3()">Run</button>
+<div id="r3"></div>
 </div>
 
-<div class="panel">
-<h3>Valkey Commands</h3>
-<div class="cmd" id="cmd">// Click "FT.CREATE" then ask a question...</div>
+<!-- STEP 4 -->
+<div class="step locked" id="s4">
+<span class="step-num">4</span><h3>Try something unrelated</h3>
+<p class="explain">This is a completely different topic. The cache should miss because the embeddings are far apart, proving the cache is smart, not just returning everything.</p>
+<div class="prompt-display">"What is the best pasta carbonara recipe?"</div>
+<button class="btn btn-p" id="b4" onclick="doStep4()">Run</button>
+<div id="r4"></div>
 </div>
 
-<div class="panel" style="border-color:#333">
-<h3>Deploy This Yourself</h3>
-<p style="font-size:13px;color:#888">Clone the repo and run with Docker Compose. Requires AWS credentials with Bedrock access.</p>
-<pre class="cmd" style="color:#888;margin-top:8px">git clone https://github.com/meet-bhagdev/valkeyforai.git
+<!-- SUMMARY -->
+<div id="summary" style="display:none">
+<div class="compare">
+<div class="big" id="speedup">-</div>
+<div class="detail" id="speedupDetail">-</div>
+</div>
+</div>
+
+<!-- FREE FORM -->
+<div class="free-input" id="freeForm" style="display:none">
+<h3 style="font-size:15px;font-weight:700;margin-bottom:8px">Try your own</h3>
+<p style="font-size:13px;color:#888;margin-bottom:10px">Type anything. Similar questions to what's cached will hit. New topics will miss and call Claude.</p>
+<input type="text" id="freeQ" placeholder="Ask anything...">
+<button class="btn btn-p" onclick="doFree()" style="margin-top:8px" id="freeBtn">Ask</button>
+<div id="freeR"></div>
+</div>
+
+<div class="deploy">
+<strong>Deploy this yourself</strong>
+<code>git clone https://github.com/meet-bhagdev/valkeyforai.git
 cd valkeyforai/demo/live/deploy
-docker compose up --build</pre>
+docker compose up --build</code>
+</div>
+</div>
+
+<!-- SIDEBAR -->
+<div class="sidebar">
+<div class="sidebar-panel">
+<h4>What Valkey Did</h4>
+<div class="cmd-log" id="cmd"><span class="comment"># Commands will appear as you go...</span></div>
+</div>
+<div class="sidebar-panel">
+<h4>How it works</h4>
+<p style="font-size:12px;color:#888;line-height:1.7">
+<strong style="color:#e5e5e5">On every query:</strong><br>
+1. Embed the prompt (Titan, 1536-dim)<br>
+2. FT.SEARCH the cache index for similar embeddings<br>
+3a. If cosine distance &lt; 0.20 → <span style="color:#22c55e">cache hit</span>, return stored response<br>
+3b. If no match → <span style="color:#ef4444">cache miss</span>, call Claude, store result with HSET + EXPIRE
+</p>
+</div>
 </div>
 </div>
 
 <script>
 const API="https://2vipd3rcpj.execute-api.us-east-1.amazonaws.com";
-let hits=0,misses=0,timeSaved=0;
-function sp(t){document.getElementById('prompt').value=t}
-function log(t){const e=document.getElementById('cmd');e.textContent+='\n> '+t;e.scrollTop=e.scrollHeight}
+let missLatency=0, hitLatency=0;
 
-async function setupCache(){
-  const r=await(await fetch(API+'/api/semantic-cache/setup',{method:'POST'})).json();
-  document.getElementById('cacheStatus').textContent='Cache index created. Ready.';
-  document.getElementById('cacheStatus').style.color='#22c55e';
-  hits=0;misses=0;timeSaved=0;
-  document.getElementById('nHit').textContent=0;
-  document.getElementById('nMiss').textContent=0;
-  document.getElementById('saved').textContent='0ms';
-  document.getElementById('history').innerHTML='<div style="color:#555;font-size:13px">Cache flushed. Ask a question...</div>';
-  log('FT.CREATE demo:cache_idx ...');
+function log(text, isComment){
+  const el=document.getElementById('cmd');
+  const div=document.createElement('div');
+  div.className=isComment?'comment':'new';
+  div.textContent=isComment?'# '+text:'> '+text;
+  el.appendChild(div);
+  el.scrollTop=el.scrollHeight;
 }
 
-async function ask(){
-  const prompt=document.getElementById('prompt').value;
-  if(!prompt)return;
-  document.getElementById('askBtn').disabled=true;
-  document.getElementById('askBtn').textContent='Thinking...';
-  try{
-    const r=await(await fetch(API+'/api/semantic-cache/ask',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({prompt,threshold:0.20})})).json();
-    r.commands.forEach(c=>log(c));
+function unlock(id){
+  document.getElementById(id).classList.remove('locked');
+  document.getElementById(id).classList.add('active');
+}
 
-    const lat=r.latency;
-    if(r.hit){
-      hits++;timeSaved+=lat.total_ms>10?2000:0;// estimate saved LLM time
-      document.getElementById('nHit').textContent=hits;
-      document.getElementById('saved').textContent=Math.round(timeSaved)+'ms';
-      const maxBar=200;
-      document.getElementById('result').innerHTML=
-        '<div class="result hit"><div class="label" style="color:#22c55e">CACHE HIT</div>'+
-        '<div class="response">'+r.response+'</div>'+
-        '<div class="meta">Matched: "'+r.cached_prompt+'" | Cosine distance: '+r.score+'</div>'+
-        '<div class="latency-bar"><span>'+lat.total_ms+'ms total</span><div class="bar fast" style="width:'+Math.max(2,lat.total_ms/10)+'px"></div><span style="color:#22c55e">'+lat.search_ms+'ms Valkey search</span></div>'+
-        '</div>';
-    }else{
-      misses++;
-      document.getElementById('nMiss').textContent=misses;
-      const barW=Math.min(200,lat.llm_ms/20);
-      document.getElementById('result').innerHTML=
-        '<div class="result miss"><div class="label" style="color:#ef4444">CACHE MISS - Called Claude Haiku</div>'+
-        '<div class="response">'+r.response+'</div>'+
-        '<div class="meta">'+(r.score?'Nearest score: '+r.score+' (above threshold)':'No cached entries yet')+'</div>'+
-        '<div class="latency-bar"><span>'+lat.total_ms+'ms total</span><div class="bar slow" style="width:'+barW+'px"></div><span style="color:#ef4444">'+lat.llm_ms+'ms Claude</span> | <span style="color:#22c55e">'+lat.search_ms+'ms Valkey</span></div>'+
-        '</div>';
-    }
-    // Add to history
-    const hist=document.getElementById('history');
-    if(hist.querySelector('div[style]'))hist.innerHTML='';
-    const badge=r.hit?'<span class="badge hit">HIT</span>':'<span class="badge miss">MISS</span>';
-    hist.innerHTML='<div class="history-item"><span class="prompt">'+prompt+'</span>'+badge+'<span class="ms">'+lat.total_ms+'ms</span></div>'+hist.innerHTML;
-  }catch(e){
-    document.getElementById('result').innerHTML='<div class="result miss">Error: '+e.message+'</div>';
+function done(id){
+  const el=document.getElementById(id);
+  el.classList.remove('active');
+  el.classList.add('done');
+}
+
+function outcomeHTML(data){
+  if(data.hit){
+    return `<div class="outcome hit">
+      <span class="tag hit-tag">CACHE HIT</span>
+      <div class="response-text">${data.response}</div>
+      <div class="timing">
+        Matched: "${data.cached_prompt}" (cosine distance: ${data.score})<br>
+        Embed: <span>${data.latency.embed_ms}ms</span> +
+        Valkey search: <span class="fast">${data.latency.search_ms}ms</span> =
+        Total: <span class="fast">${data.latency.total_ms}ms</span>
+      </div>
+    </div>`;
+  } else {
+    return `<div class="outcome miss">
+      <span class="tag miss-tag">CACHE MISS</span>
+      <div class="response-text">${data.response}</div>
+      <div class="timing">
+        ${data.score ? 'Nearest match distance: '+data.score+' (above 0.20 threshold)' : 'Cache is empty'}<br>
+        Embed: <span>${data.latency.embed_ms}ms</span> +
+        Valkey search: <span>${data.latency.search_ms}ms</span> +
+        Claude: <span class="slow">${data.latency.llm_ms}ms</span> =
+        Total: <span class="slow">${data.latency.total_ms}ms</span>
+      </div>
+    </div>`;
   }
-  document.getElementById('askBtn').disabled=false;
-  document.getElementById('askBtn').textContent='Ask (checks cache first)';
+}
+
+async function callCache(prompt){
+  const r=await fetch(API+'/api/semantic-cache/ask',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({prompt,threshold:0.20})});
+  return await r.json();
+}
+
+async function doStep1(){
+  document.getElementById('b1').disabled=true;
+  document.getElementById('b1').textContent='Creating...';
+  await fetch(API+'/api/semantic-cache/setup',{method:'POST'});
+  log('FT.CREATE demo:cache_idx ON HASH PREFIX 1 demo:cache: SCHEMA prompt TAG response TAG embedding VECTOR HNSW 6 TYPE FLOAT32 DIM 1536 DISTANCE_METRIC COSINE');
+  document.getElementById('r1').innerHTML='<div class="outcome hit" style="border-color:#a855f744;background:#a855f708"><span class="tag" style="background:#a855f722;color:#a855f7">DONE</span> Index created. Valkey is ready to store and search embeddings.</div>';
+  done('s1');
+  unlock('s2');
+  document.getElementById('b1').textContent='Done';
+}
+
+async function doStep2(){
+  document.getElementById('b2').disabled=true;
+  document.getElementById('b2').textContent='Embedding + calling Claude...';
+  log('Embed "What is Valkey and what is it used for?" → [1536-dim vector]', true);
+  log('FT.SEARCH demo:cache_idx "*=>[KNN 1 @embedding $v]" PARAMS 2 v [query_vector] DIALECT 2');
+  const d=await callCache("What is Valkey and what is it used for?");
+  d.commands.forEach(c=>{if(!c.startsWith('#')&&!c.startsWith('FT.SEARCH'))log(c)});
+  missLatency=d.latency.total_ms;
+  log('Cache empty → called Claude Haiku ('+d.latency.llm_ms+'ms)', true);
+  log('HSET demo:cache:... prompt "What is Valkey..." response "..." embedding [1536-dim vector]');
+  log('EXPIRE demo:cache:... 3600');
+  document.getElementById('r2').innerHTML=outcomeHTML(d);
+  done('s2');
+  unlock('s3');
+  document.getElementById('b2').textContent='Done';
+}
+
+async function doStep3(){
+  document.getElementById('b3').disabled=true;
+  document.getElementById('b3').textContent='Embedding + searching cache...';
+  log('Embed "Explain Valkey to me" → [1536-dim vector]', true);
+  log('FT.SEARCH demo:cache_idx "*=>[KNN 1 @embedding $v]" PARAMS 2 v [query_vector] DIALECT 2');
+  const d=await callCache("Explain Valkey to me");
+  hitLatency=d.latency.total_ms;
+  log('Found match! Distance: '+d.score+' < threshold 0.20 → returning cached response', true);
+  document.getElementById('r3').innerHTML=outcomeHTML(d);
+  done('s3');
+  unlock('s4');
+  document.getElementById('b3').textContent='Done';
+}
+
+async function doStep4(){
+  document.getElementById('b4').disabled=true;
+  document.getElementById('b4').textContent='Embedding + searching cache...';
+  log('Embed "What is the best pasta carbonara recipe?" → [1536-dim vector]', true);
+  log('FT.SEARCH demo:cache_idx "*=>[KNN 1 @embedding $v]" PARAMS 2 v [query_vector] DIALECT 2');
+  const d=await callCache("What is the best pasta carbonara recipe?");
+  d.commands.forEach(c=>{if(!c.startsWith('#')&&!c.startsWith('FT.SEARCH'))log(c)});
+  log('No match close enough → called Claude Haiku ('+d.latency.llm_ms+'ms)', true);
+  document.getElementById('r4').innerHTML=outcomeHTML(d);
+  done('s4');
+  document.getElementById('b4').textContent='Done';
+
+  // Show summary
+  if(missLatency>0 && hitLatency>0){
+    const speedup=Math.round(missLatency/hitLatency);
+    document.getElementById('speedup').textContent=speedup+'x faster';
+    document.getElementById('speedupDetail').textContent=
+      'Cache hit: '+hitLatency+'ms vs LLM call: '+missLatency+'ms. Same answer, '+speedup+'x faster, $0 LLM cost.';
+    document.getElementById('summary').style.display='block';
+  }
+  document.getElementById('freeForm').style.display='block';
+}
+
+async function doFree(){
+  const q=document.getElementById('freeQ').value;
+  if(!q)return;
+  document.getElementById('freeBtn').disabled=true;
+  document.getElementById('freeBtn').textContent='Checking cache...';
+  log('Embed "'+q.substring(0,40)+'..." → [1536-dim vector]', true);
+  log('FT.SEARCH demo:cache_idx "*=>[KNN 1 @embedding $v]" PARAMS 2 v [query_vector] DIALECT 2');
+  const d=await callCache(q);
+  d.commands.forEach(c=>{if(!c.startsWith('#')&&!c.startsWith('FT.SEARCH'))log(c)});
+  if(d.hit) log('Cache hit! Distance: '+d.score, true);
+  else log('Cache miss → called Claude ('+d.latency.llm_ms+'ms)', true);
+  document.getElementById('freeR').innerHTML=outcomeHTML(d);
+  document.getElementById('freeBtn').disabled=false;
+  document.getElementById('freeBtn').textContent='Ask';
 }
 </script>
 </body>
