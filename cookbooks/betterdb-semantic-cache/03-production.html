@@ -1,0 +1,333 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>03 - Production Patterns - Valkey for AI</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../cookbook.css">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css">
+<style>
+body.light .nav{background:rgba(255,255,255,.9)!important}
+body.light pre{background:rgba(0,0,0,.03)!important;border-color:rgba(0,0,0,.08)!important}
+body.light code{color:#1d1d1f}
+body.light .callout{background:rgba(0,0,0,.02);border-color:rgba(0,0,0,.08)}
+body.light table{border-color:rgba(0,0,0,.08)}
+body.light th{background:rgba(0,0,0,.04)}
+body.light td{border-color:rgba(0,0,0,.06)}
+body.light{--bg:#fff;--bg-elevated:#f5f5f7;--bg-card:rgba(0,0,0,.03);--bg-card-hover:rgba(0,0,0,.06);--brd:rgba(0,0,0,.08);--t1:#1d1d1f;--t2:rgba(29,29,31,.6);--t3:rgba(29,29,31,.4)}
+.theme-toggle{background:rgba(128,128,128,.12);border:1px solid rgba(128,128,128,.2);border-radius:100px;width:36px;height:36px;display:flex;align-items:center;justify-content:center;cursor:pointer;padding:0;position:fixed;top:18px;right:24px;z-index:1001}
+pre{position:relative}
+pre code.hljs{background:transparent!important;padding:0}
+</style>
+</head>
+<body>
+<nav class="nav"><div class="nav-inner"><a href="/" class="nav-logo"><img src="/valkey-logo.svg" alt="Valkey"><span class="accent">for ai</span></a><div class="nav-links"><a href="/#use-cases">Use Cases</a><a href="/#frameworks">Frameworks</a><a href="https://github.com/meet-bhagdev/valkeyforai/tree/main" target="_blank">GitHub</a></div></div></nav>
+<article>
+<div class="breadcrumb"><a href="/">Home</a> → <a href="/cookbooks/betterdb-semantic-cache/">@betterdb/semantic-cache</a> → 03 Production Patterns</div>
+<div class="meta"><span class="diff-hard">Advanced</span><span class="lang">TypeScript</span><span class="lang">~20 min</span></div>
+<h1>Production <span class="gradient">Patterns</span></h1>
+<p class="lead">Threshold tuning, uncertain hit strategies, per-category overrides, TTL management, invalidation, and built-in Prometheus metrics.</p>
+
+<h2>Pattern 1: Threshold Tuning</h2>
+<p>The <code>defaultThreshold</code> controls the trade-off between hit rate and answer quality. It is a <strong>cosine distance</strong> (0–2 scale).</p>
+<table>
+<thead>
+<tr>
+<th>Threshold</th>
+<th>Hit Rate</th>
+<th>Quality Risk</th>
+<th>Best For</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>0.05</code></td>
+<td>Low (~20%)</td>
+<td>Very low</td>
+<td>Medical, legal, financial</td>
+</tr>
+<tr>
+<td><code>0.10</code></td>
+<td>Medium (~35%)</td>
+<td>Low</td>
+<td>High-accuracy chatbots</td>
+</tr>
+<tr>
+<td><code>0.15</code></td>
+<td>Balanced (~50%)</td>
+<td>Low</td>
+<td>General purpose - start here</td>
+</tr>
+<tr>
+<td><code>0.20</code></td>
+<td>High (~65%)</td>
+<td>Medium</td>
+<td>FAQ bots, support</td>
+</tr>
+<tr>
+<td><code>0.30+</code></td>
+<td>Very high (~75%+)</td>
+<td>High</td>
+<td>Not recommended unless monitored</td>
+</tr>
+</tbody></table>
+<p>To find the right threshold, run a sample of your real queries through the cache and inspect the similarity scores:</p>
+<pre><code class="language-typescript">import { SemanticCache } from &#39;@betterdb/semantic-cache&#39;;
+
+// Use a low threshold (wide net) to collect score data
+const evalCache = new SemanticCache({
+  client,
+  embedFn,
+  defaultThreshold: 0.50, // catch everything for analysis
+});
+await evalCache.initialize();
+
+const testPrompts = [
+  &#39;What is Valkey?&#39;,
+  &#39;Can you explain Valkey?&#39;,     // should match → expect low score
+  &#39;How do I set a key in Redis?&#39;, // different intent → expect high score
+  &#39;Valkey vs Redis comparison&#39;,   // related but different → borderline
+];
+
+for (const prompt of testPrompts) {
+  const result = await evalCache.check(prompt);
+  if (result.similarity !== undefined) {
+    console.log(`score=${result.similarity.toFixed(4)}  prompt=&quot;${prompt}&quot;`);
+  }
+}
+// score=0.0821  prompt=&quot;Can you explain Valkey?&quot;
+// score=0.3142  prompt=&quot;How do I set a key in Redis?&quot;
+// score=0.2205  prompt=&quot;Valkey vs Redis comparison&quot;
+</code></pre>
+<p>Set your threshold between the highest acceptable hit and the lowest unacceptable hit.</p>
+<hr>
+<h2>Pattern 2: Handling Uncertain Hits</h2>
+<p>When a prompt falls in the uncertainty band - slightly above the threshold - <code>cache.check()</code> returns <code>confidence: &#39;uncertain&#39;</code>. Three strategies:</p>
+<p><strong>Accept and monitor</strong> - return the cached response but track it separately via the <code>result: &#39;uncertain_hit&#39;</code> Prometheus label. Review periodically.</p>
+<pre><code class="language-typescript">const result = await cache.check(prompt);
+
+if (result.hit) {
+  if (result.confidence === &#39;uncertain&#39;) {
+    metrics.increment(&#39;cache.uncertain_hit&#39;); // your own counter
+  }
+  return result.response!;
+}
+</code></pre>
+<p><strong>Fall back to LLM</strong> - treat uncertain hits as misses. Use the fresh LLM response to overwrite the cache entry.</p>
+<pre><code class="language-typescript">const result = await cache.check(prompt);
+
+if (result.hit &amp;&amp; result.confidence === &#39;high&#39;) {
+  return result.response!;
+}
+
+// Miss or uncertain - call LLM
+const response = await callLlm(prompt);
+await cache.store(prompt, response); // overwrites uncertain entry
+return response;
+</code></pre>
+<p><strong>Prompt for feedback</strong> - in user-facing applications, show the cached response but collect a signal.</p>
+<pre><code class="language-typescript">if (result.hit &amp;&amp; result.confidence === &#39;uncertain&#39;) {
+  return {
+    response: result.response,
+    showFeedback: true, // render thumbs up/down in the UI
+  };
+}
+</code></pre>
+<p>A high rate of uncertain hits (visible in <code>semantic_cache_requests_total{result=&quot;uncertain_hit&quot;}</code>) indicates the threshold may be too loose.</p>
+<hr>
+<h2>Pattern 3: Per-Category Thresholds</h2>
+<p>Different query categories can have different accuracy requirements. Use <code>categoryThresholds</code> to override the default per-category:</p>
+<pre><code class="language-typescript">const cache = new SemanticCache({
+  client,
+  embedFn,
+  defaultThreshold: 0.15,
+  categoryThresholds: {
+    &#39;medical&#39;: 0.05,    // very strict - health information must be accurate
+    &#39;faq&#39;:     0.25,    // relaxed - FAQ answers are safe to generalize
+    &#39;support&#39;: 0.20,    // moderate - support answers are usually reusable
+  },
+});
+
+// Pass category on each call
+const result = await cache.check(prompt, { category: &#39;medical&#39; });
+await cache.store(prompt, response, { category: &#39;medical&#39; });
+</code></pre>
+<p>The category is stored as a TAG field in Valkey and is also emitted as a label on all Prometheus metrics.</p>
+<hr>
+<h2>Pattern 4: TTL Strategies</h2>
+<pre><code class="language-typescript">// Fixed TTL - simple, applied at store time
+await cache.store(prompt, response, { ttl: 3600 }); // 1 hour
+
+// Use defaultTtl in the constructor for a global default
+const cache = new SemanticCache({
+  client, embedFn,
+  defaultTtl: 86400, // 24 hours
+});
+
+// Per-category TTL (set at store time, overrides default)
+await cache.store(prompt, response, {
+  category: &#39;real-time&#39;,
+  ttl: 300, // 5 minutes for time-sensitive data
+});
+</code></pre>
+<table>
+<thead>
+<tr>
+<th>Category</th>
+<th>Recommended TTL</th>
+<th>Reason</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>General facts</td>
+<td>86400 (24h)</td>
+<td>Stable information</td>
+</tr>
+<tr>
+<td>Product info</td>
+<td>3600 (1h)</td>
+<td>Changes occasionally</td>
+</tr>
+<tr>
+<td>Real-time data</td>
+<td>300 (5min)</td>
+<td>Prices, weather, status</td>
+</tr>
+<tr>
+<td>Conversation</td>
+<td>1800 (30min)</td>
+<td>Session-scoped</td>
+</tr>
+</tbody></table>
+<hr>
+<h2>Pattern 5: Cache Invalidation</h2>
+<pre><code class="language-typescript">// Invalidate a specific entry by its exact prompt
+const key = await cache.store(&#39;What is the price of product X?&#39;, response);
+await cache.invalidate(`@key:{${key}}`);
+
+// Invalidate all entries for a category
+await cache.invalidate(&#39;@category:{pricing}&#39;);
+
+// Invalidate all entries for a model (if you store model as a custom field)
+// Use cache.flush() to drop everything and rebuild from scratch
+await cache.flush();
+await cache.initialize(); // rebuild the index
+</code></pre>
+<blockquote>
+<p><strong>Note:</strong> <code>invalidate()</code> accepts any <code>valkey-search</code> filter expression. See the <a href="https://valkey.io/docs/topics/valkey-search-query-syntax/">Valkey search query syntax</a> for full filter options.</p>
+</blockquote>
+<hr>
+<h2>Pattern 6: Prometheus Metrics</h2>
+<p>All metrics are prefixed with <code>semantic_cache_</code> by default (configurable via <code>telemetry.metricsPrefix</code>).</p>
+<table>
+<thead>
+<tr>
+<th>Metric</th>
+<th>Type</th>
+<th>Labels</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>semantic_cache_requests_total</code></td>
+<td>Counter</td>
+<td><code>cache_name</code>, <code>result</code>, <code>category</code></td>
+<td>Total requests. <code>result</code>: <code>hit</code>, <code>miss</code>, <code>uncertain_hit</code></td>
+</tr>
+<tr>
+<td><code>semantic_cache_similarity_score</code></td>
+<td>Histogram</td>
+<td><code>cache_name</code>, <code>category</code></td>
+<td>Cosine distance scores for lookups with candidates</td>
+</tr>
+<tr>
+<td><code>semantic_cache_operation_duration_seconds</code></td>
+<td>Histogram</td>
+<td><code>cache_name</code>, <code>operation</code></td>
+<td>Duration per operation (<code>check</code>, <code>store</code>, <code>invalidate</code>, <code>initialize</code>)</td>
+</tr>
+<tr>
+<td><code>semantic_cache_embedding_duration_seconds</code></td>
+<td>Histogram</td>
+<td><code>cache_name</code></td>
+<td>Embedding function call duration</td>
+</tr>
+</tbody></table>
+<p>Expose them via a <code>/metrics</code> endpoint:</p>
+<pre><code class="language-typescript">import { register } from &#39;prom-client&#39;;
+import express from &#39;express&#39;;
+
+const app = express();
+
+app.get(&#39;/metrics&#39;, async (_req, res) =&gt; {
+  res.set(&#39;Content-Type&#39;, register.contentType);
+  res.end(await register.metrics());
+});
+</code></pre>
+<p>Key dashboards to build:</p>
+<pre><code># Hit rate over time
+rate(semantic_cache_requests_total{result=&quot;hit&quot;}[5m])
+  / rate(semantic_cache_requests_total[5m])
+
+# P95 check latency
+histogram_quantile(0.95, rate(semantic_cache_operation_duration_seconds_bucket{operation=&quot;check&quot;}[5m]))
+
+# Uncertain hit fraction
+rate(semantic_cache_requests_total{result=&quot;uncertain_hit&quot;}[5m])
+  / rate(semantic_cache_requests_total[5m])
+</code></pre>
+<hr>
+<h2>Production Checklist</h2>
+<table>
+<thead>
+<tr>
+<th>Area</th>
+<th>Recommendation</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>Threshold</td>
+<td>Start at <code>0.15</code>, tune with real query samples</td>
+</tr>
+<tr>
+<td>Uncertain hits</td>
+<td>Track the <code>uncertain_hit</code> label; adjust threshold if &gt; 10%</td>
+</tr>
+<tr>
+<td>TTL</td>
+<td>Set <code>defaultTtl</code>; override per-category for time-sensitive data</td>
+</tr>
+<tr>
+<td>Memory</td>
+<td>Set <code>maxmemory-policy allkeys-lru</code> in Valkey config</td>
+</tr>
+<tr>
+<td>Invalidation</td>
+<td>Use category TAGs at write time for targeted invalidation</td>
+</tr>
+<tr>
+<td>Metrics</td>
+<td>Expose <code>/metrics</code> and alert on hit rate drop &gt; 20%</td>
+</tr>
+<tr>
+<td>Cluster</td>
+<td>Avoid <code>flush()</code> in cluster mode - SCAN only covers one node</td>
+</tr>
+<tr>
+<td>Streaming</td>
+<td>Accumulate full response before calling <code>store()</code></td>
+</tr>
+</tbody></table>
+
+
+<div class="nav-prev-next">
+<a href="02-adapters.html" class="prev"><span class="label">← Previous</span><span class="title">02 - Adapters</span></a>
+<div></div>
+</div>
+</article>
+<button class="theme-toggle" onclick="toggleTheme()" aria-label="Toggle theme"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/></svg></button>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+<script>hljs.highlightAll();</script>
+<script>function toggleTheme(){var b=document.body,l=b.classList.toggle("light");localStorage.setItem("theme",l?"light":"dark")}(function(){if(localStorage.getItem("theme")==="light")document.body.classList.add("light")})()</script>
+</body>
+</html>

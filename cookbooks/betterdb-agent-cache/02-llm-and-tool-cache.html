@@ -1,0 +1,229 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>02 - LLM & Tool Cache - Valkey for AI</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../cookbook.css">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css">
+<style>
+body.light .nav{background:rgba(255,255,255,.9)!important}
+body.light pre{background:rgba(0,0,0,.03)!important;border-color:rgba(0,0,0,.08)!important}
+body.light code{color:#1d1d1f}
+body.light .callout{background:rgba(0,0,0,.02);border-color:rgba(0,0,0,.08)}
+body.light table{border-color:rgba(0,0,0,.08)}
+body.light th{background:rgba(0,0,0,.04)}
+body.light td{border-color:rgba(0,0,0,.06)}
+body.light{--bg:#fff;--bg-elevated:#f5f5f7;--bg-card:rgba(0,0,0,.03);--bg-card-hover:rgba(0,0,0,.06);--brd:rgba(0,0,0,.08);--t1:#1d1d1f;--t2:rgba(29,29,31,.6);--t3:rgba(29,29,31,.4)}
+.theme-toggle{background:rgba(128,128,128,.12);border:1px solid rgba(128,128,128,.2);border-radius:100px;width:36px;height:36px;display:flex;align-items:center;justify-content:center;cursor:pointer;padding:0;position:fixed;top:18px;right:24px;z-index:1001}
+pre{position:relative}
+pre code.hljs{background:transparent!important;padding:0}
+</style>
+</head>
+<body>
+<nav class="nav"><div class="nav-inner"><a href="/" class="nav-logo"><img src="/valkey-logo.svg" alt="Valkey"><span class="accent">for ai</span></a><div class="nav-links"><a href="/#use-cases">Use Cases</a><a href="/#frameworks">Frameworks</a><a href="https://github.com/meet-bhagdev/valkeyforai/tree/main" target="_blank">GitHub</a></div></div></nav>
+<article>
+<div class="breadcrumb"><a href="/">Home</a> → <a href="/cookbooks/betterdb-agent-cache/">@betterdb/agent-cache</a> → 02 LLM & Tool Cache</div>
+<div class="meta"><span class="diff-medium">Intermediate</span><span class="lang">TypeScript</span><span class="lang">~20 min</span></div>
+<h1>LLM &amp; Tool <span class="gradient">Cache</span></h1>
+<p class="lead">Cache exact LLM responses and tool call results. Track cost savings per model. Use toolEffectiveness() to tune per-tool TTLs automatically.</p>
+
+<h2>LLM Cache Tier</h2>
+<p>The LLM cache stores full LLM responses by exact match on all parameters that affect the output.</p>
+<h3>What Gets Hashed</h3>
+<p>The cache key is a SHA-256 hash of these fields (with recursively sorted object keys for determinism):</p>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Notes</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>model</code></td>
+<td><code>&#39;gpt-4o&#39;</code>, <code>&#39;gpt-4o-mini&#39;</code>, etc.</td>
+</tr>
+<tr>
+<td><code>messages</code></td>
+<td>Full message array including roles and content</td>
+</tr>
+<tr>
+<td><code>temperature</code></td>
+<td><code>undefined</code> is treated as unset</td>
+</tr>
+<tr>
+<td><code>top_p</code></td>
+<td><code>undefined</code> is treated as unset</td>
+</tr>
+<tr>
+<td><code>max_tokens</code></td>
+<td><code>undefined</code> is treated as unset</td>
+</tr>
+<tr>
+<td><code>tools</code></td>
+<td>Tool definitions if present</td>
+</tr>
+</tbody></table>
+<p>Changing any of these fields produces a different cache key. This means a prompt cached at <code>temperature: 0</code> will not hit at <code>temperature: 0.7</code>.</p>
+<h3>Check and Store</h3>
+<pre><code class="language-typescript">import Valkey from &#39;iovalkey&#39;;
+import { AgentCache } from &#39;@betterdb/agent-cache&#39;;
+import OpenAI from &#39;openai&#39;;
+
+const client = new Valkey({ host: &#39;localhost&#39;, port: 6379 });
+const openai = new OpenAI();
+
+const cache = new AgentCache({
+  client,
+  tierDefaults: { llm: { ttl: 3600 } },
+  costTable: {
+    &#39;gpt-4o-mini&#39;: { inputPer1k: 0.00015, outputPer1k: 0.0006 },
+  },
+});
+
+async function cachedCompletion(params: {
+  model: string;
+  messages: Array&lt;{ role: string; content: string }&gt;;
+  temperature: number;
+}) {
+  const cached = await cache.llm.check(params);
+  if (cached.hit) {
+    return cached.response!;
+  }
+
+  const completion = await openai.chat.completions.create(params);
+  const response = completion.choices[0].message.content!;
+  const usage = completion.usage!;
+
+  await cache.llm.store(params, response, {
+    tokens: {
+      input: usage.prompt_tokens,
+      output: usage.completion_tokens,
+    },
+  });
+
+  return response;
+}
+</code></pre>
+<p>Token counts in <code>store()</code> enable cost savings tracking via the <code>costTable</code>. Without <code>tokens</code>, cost tracking is skipped for that entry.</p>
+<h3>Invalidating by Model</h3>
+<p>When you change a model&#39;s system prompt or want to force fresh responses after fine-tuning:</p>
+<pre><code class="language-typescript">const deleted = await cache.llm.invalidateByModel(&#39;gpt-4o-mini&#39;);
+console.log(`Deleted ${deleted} entries`);
+</code></pre>
+<p>This uses SCAN to find and delete all entries with <code>betterdb_ac:llm:*</code> that match the model. Use <code>name</code> prefix isolation if you want per-environment invalidation without touching other environments.</p>
+<hr>
+<h2>Tool Cache Tier</h2>
+<p>The tool cache stores tool/function call results. It is especially valuable for expensive external API calls - weather, geocoding, database queries, web search - that return stable results for the same inputs.</p>
+<h3>Check and Store</h3>
+<pre><code class="language-typescript">async function cachedTool(name: string, args: Record&lt;string, unknown&gt;) {
+  const cached = await cache.tool.check(name, args);
+  if (cached.hit) {
+    return JSON.parse(cached.response!);
+  }
+
+  const result = await callTool(name, args); // your tool implementation
+
+  await cache.tool.store(name, args, JSON.stringify(result), {
+    ttl: 300,     // per-call TTL override
+    cost: 0.005,  // API call cost in dollars
+  });
+
+  return result;
+}
+</code></pre>
+<h3>Per-Tool TTL Policies</h3>
+<p>Different tools have different data freshness requirements. Use <code>setPolicy()</code> to configure per-tool defaults:</p>
+<pre><code class="language-typescript">// Weather data: short TTL, changes frequently
+await cache.tool.setPolicy(&#39;get_weather&#39;, { ttl: 300 }); // 5 min
+
+// Stock prices: very short TTL
+await cache.tool.setPolicy(&#39;get_stock_price&#39;, { ttl: 60 }); // 1 min
+
+// Geocoding: long TTL, addresses don&#39;t change
+await cache.tool.setPolicy(&#39;geocode_address&#39;, { ttl: 86400 }); // 24h
+
+// Web search results: medium TTL
+await cache.tool.setPolicy(&#39;web_search&#39;, { ttl: 3600 }); // 1h
+</code></pre>
+<p>TTL precedence: per-call <code>ttl</code> &gt; tool policy &gt; <code>tierDefaults.tool.ttl</code> &gt; <code>defaultTtl</code>.</p>
+<h3>Invalidation</h3>
+<pre><code class="language-typescript">// Invalidate all results for a specific tool
+const deleted = await cache.tool.invalidateByTool(&#39;get_weather&#39;);
+console.log(`Deleted ${deleted} weather cache entries`);
+
+// Invalidate one specific call
+const existed = await cache.tool.invalidate(&#39;get_weather&#39;, { city: &#39;Sofia&#39; });
+</code></pre>
+<hr>
+<h2>Cost Tracking and Stats</h2>
+<h3>Aggregate Stats</h3>
+<pre><code class="language-typescript">const stats = await cache.stats();
+console.log(stats);
+/*
+{
+  llm:  { hits: 150, misses: 50, total: 200, hitRate: 0.75 },
+  tool: { hits: 300, misses: 100, total: 400, hitRate: 0.75 },
+  session: { reads: 1000, writes: 500 },
+  costSavedMicros: 12500000,  // $12.50 - stored as microdollars to avoid float precision issues
+  perTool: {
+    get_weather: { hits: 200, misses: 50, hitRate: 0.80, ttl: 300 },
+    web_search:  { hits: 100, misses: 50, hitRate: 0.67, ttl: 3600 },
+  }
+}
+*/
+
+// Convert microdollars to dollars
+const costSaved = stats.costSavedMicros / 1_000_000;
+console.log(`Cost saved: $${costSaved.toFixed(4)}`);
+</code></pre>
+<h3>Tool Effectiveness Recommendations</h3>
+<p><code>toolEffectiveness()</code> returns per-tool hit rates and recommendations based on observed behavior:</p>
+<pre><code class="language-typescript">const effectiveness = await cache.toolEffectiveness();
+console.log(effectiveness);
+/*
+[
+  { tool: &#39;get_weather&#39;,   hitRate: 0.85, costSaved: 5.00, recommendation: &#39;increase_ttl&#39; },
+  { tool: &#39;web_search&#39;,    hitRate: 0.62, costSaved: 2.50, recommendation: &#39;optimal&#39; },
+  { tool: &#39;rare_api_call&#39;, hitRate: 0.08, costSaved: 0.10, recommendation: &#39;decrease_ttl_or_disable&#39; },
+]
+*/
+</code></pre>
+<table>
+<thead>
+<tr>
+<th>Recommendation</th>
+<th>Condition</th>
+<th>Action</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>increase_ttl</code></td>
+<td>Hit rate &gt; 80% and TTL &lt; 1 hour</td>
+<td>Extend TTL - results are stable and reused frequently</td>
+</tr>
+<tr>
+<td><code>optimal</code></td>
+<td>Hit rate 40–80%</td>
+<td>No change needed</td>
+</tr>
+<tr>
+<td><code>decrease_ttl_or_disable</code></td>
+<td>Hit rate &lt; 40%</td>
+<td>Results change too fast or are rarely repeated - consider disabling cache for this tool</td>
+</tr>
+</tbody></table>
+
+
+<div class="nav-prev-next">
+<a href="01-getting-started.html" class="prev"><span class="label">← Previous</span><span class="title">01 - Getting Started</span></a>
+<a href="03-session-store.html" class="next"><span class="label">Next →</span><span class="title">03 - Session Store</span></a>
+</div>
+</article>
+<button class="theme-toggle" onclick="toggleTheme()" aria-label="Toggle theme"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/></svg></button>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+<script>hljs.highlightAll();</script>
+<script>function toggleTheme(){var b=document.body,l=b.classList.toggle("light");localStorage.setItem("theme",l?"light":"dark")}(function(){if(localStorage.getItem("theme")==="light")document.body.classList.add("light")})()</script>
+</body>
+</html>

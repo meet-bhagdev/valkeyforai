@@ -1,0 +1,201 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>03 - Agent Session Store - Valkey for AI</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../cookbook.css">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css">
+<style>
+body.light .nav{background:rgba(255,255,255,.9)!important}
+body.light pre{background:rgba(0,0,0,.03)!important;border-color:rgba(0,0,0,.08)!important}
+body.light code{color:#1d1d1f}
+body.light .callout{background:rgba(0,0,0,.02);border-color:rgba(0,0,0,.08)}
+body.light table{border-color:rgba(0,0,0,.08)}
+body.light th{background:rgba(0,0,0,.04)}
+body.light td{border-color:rgba(0,0,0,.06)}
+body.light{--bg:#fff;--bg-elevated:#f5f5f7;--bg-card:rgba(0,0,0,.03);--bg-card-hover:rgba(0,0,0,.06);--brd:rgba(0,0,0,.08);--t1:#1d1d1f;--t2:rgba(29,29,31,.6);--t3:rgba(29,29,31,.4)}
+.theme-toggle{background:rgba(128,128,128,.12);border:1px solid rgba(128,128,128,.2);border-radius:100px;width:36px;height:36px;display:flex;align-items:center;justify-content:center;cursor:pointer;padding:0;position:fixed;top:18px;right:24px;z-index:1001}
+pre{position:relative}
+pre code.hljs{background:transparent!important;padding:0}
+</style>
+</head>
+<body>
+<nav class="nav"><div class="nav-inner"><a href="/" class="nav-logo"><img src="/valkey-logo.svg" alt="Valkey"><span class="accent">for ai</span></a><div class="nav-links"><a href="/#use-cases">Use Cases</a><a href="/#frameworks">Frameworks</a><a href="https://github.com/meet-bhagdev/valkeyforai/tree/main" target="_blank">GitHub</a></div></div></nav>
+<article>
+<div class="breadcrumb"><a href="/">Home</a> → <a href="/cookbooks/betterdb-agent-cache/">@betterdb/agent-cache</a> → 03 Session Store</div>
+<div class="meta"><span class="diff-medium">Intermediate</span><span class="lang">TypeScript</span><span class="lang">~20 min</span></div>
+<h1>Agent <span class="gradient">Session Store</span></h1>
+<p class="lead">Persist per-agent state with per-field TTL and sliding-window refresh. Store intent, intermediate results, and reasoning chains across invocations.</p>
+
+<p>The session tier is a per-thread key-value store for agent state. It is designed for the patterns that come up in multi-step, multi-turn agents: storing user intent, intermediate reasoning, extracted entities, and tool call context between invocations.</p>
+<h2>How It Works</h2>
+<p>Each session field is stored as an individual Valkey key:</p>
+<pre><code>betterdb_ac:session:{threadId}:{field}
+</code></pre>
+<p>This differs from storing everything in a Redis HASH. Individual keys allow <strong>per-field TTL</strong> - different fields can have different expiry times - and <code>get()</code> automatically refreshes the TTL on each read (sliding window). The trade-off is that <code>getAll()</code> and <code>destroyThread()</code> require a SCAN + pipeline rather than a single <code>HGETALL</code> or <code>DEL</code>.</p>
+<h2>Basic Operations</h2>
+<pre><code class="language-typescript">import Valkey from &#39;iovalkey&#39;;
+import { AgentCache } from &#39;@betterdb/agent-cache&#39;;
+
+const client = new Valkey({ host: &#39;localhost&#39;, port: 6379 });
+const cache = new AgentCache({
+  client,
+  tierDefaults: { session: { ttl: 1800 } }, // 30 min sliding window
+});
+
+const threadId = &#39;user-42-thread-001&#39;;
+
+// Write state fields
+await cache.session.set(threadId, &#39;intent&#39;, &#39;book_flight&#39;);
+await cache.session.set(threadId, &#39;destination&#39;, &#39;Sofia&#39;);
+await cache.session.set(threadId, &#39;departure&#39;, &#39;2026-06-01&#39;);
+
+// Read a field (also refreshes its TTL)
+const intent = await cache.session.get(threadId, &#39;intent&#39;);
+// &#39;book_flight&#39;
+
+// Returns null for fields that don&#39;t exist or have expired
+const missing = await cache.session.get(threadId, &#39;return_date&#39;);
+// null
+</code></pre>
+<h2>Getting All Fields</h2>
+<pre><code class="language-typescript">const state = await cache.session.getAll(threadId);
+console.log(state);
+// { intent: &#39;book_flight&#39;, destination: &#39;Sofia&#39;, departure: &#39;2026-06-01&#39; }
+</code></pre>
+<p><code>getAll()</code> uses SCAN to find all keys for the thread and fetches them in a pipeline. It is designed for sessions with dozens of fields - not thousands. If you have thousands of fields per thread, consider a HASH-based approach instead.</p>
+<h2>Refreshing TTLs</h2>
+<pre><code class="language-typescript">// On each user interaction, refresh all session fields to keep the session alive
+await cache.session.touch(threadId);
+</code></pre>
+<p><code>touch()</code> extends the TTL on every field for the thread. Call it at the start of each agent invocation to prevent partial expiry where some fields outlive others.</p>
+<h2>Deleting State</h2>
+<pre><code class="language-typescript">// Delete a single field
+await cache.session.delete(threadId, &#39;departure&#39;);
+
+// Destroy the entire thread - session state + LangGraph checkpoints
+const deleted = await cache.session.destroyThread(threadId);
+console.log(`Deleted ${deleted} keys`);
+</code></pre>
+<p><code>destroyThread()</code> is the clean shutdown path. Call it when a conversation ends or a user explicitly resets their session.</p>
+<h2>Multi-Step Agent Example</h2>
+<p>Here is a booking agent that accumulates state across multiple tool calls:</p>
+<pre><code class="language-typescript">interface BookingState {
+  intent?: string;
+  origin?: string;
+  destination?: string;
+  departure?: string;
+  passengerCount?: string;
+  searchResults?: string;
+}
+
+async function runBookingAgent(threadId: string, userMessage: string) {
+  // Load existing state
+  const state = await cache.session.getAll(threadId) as BookingState;
+
+  // Extract intent from message (simplified)
+  if (userMessage.includes(&#39;book&#39;) &amp;&amp; userMessage.includes(&#39;flight&#39;)) {
+    await cache.session.set(threadId, &#39;intent&#39;, &#39;book_flight&#39;);
+  }
+
+  // Extract destination
+  const destMatch = userMessage.match(/to (\w+)/i);
+  if (destMatch) {
+    await cache.session.set(threadId, &#39;destination&#39;, destMatch[1]);
+  }
+
+  // Extract departure date
+  const dateMatch = userMessage.match(/on (\d{4}-\d{2}-\d{2})/);
+  if (dateMatch) {
+    await cache.session.set(threadId, &#39;departure&#39;, dateMatch[1]);
+  }
+
+  // Refresh all TTLs so the session doesn&#39;t partially expire
+  await cache.session.touch(threadId);
+
+  // Read current state
+  const currentState = await cache.session.getAll(threadId) as BookingState;
+
+  // Search for flights only when we have enough context
+  if (currentState.destination &amp;&amp; currentState.departure &amp;&amp; !currentState.searchResults) {
+    const results = await cache.tool.check(&#39;search_flights&#39;, {
+      destination: currentState.destination,
+      date: currentState.departure,
+    });
+
+    if (!results.hit) {
+      const flightData = await searchFlights(currentState);
+      await cache.tool.store(&#39;search_flights&#39;, {
+        destination: currentState.destination,
+        date: currentState.departure,
+      }, JSON.stringify(flightData));
+      await cache.session.set(threadId, &#39;searchResults&#39;, JSON.stringify(flightData));
+    } else {
+      await cache.session.set(threadId, &#39;searchResults&#39;, results.response!);
+    }
+  }
+
+  return cache.session.getAll(threadId);
+}
+</code></pre>
+<h2>Session State Patterns</h2>
+<table>
+<thead>
+<tr>
+<th>Pattern</th>
+<th>Implementation</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>User intent tracking</td>
+<td><code>set(thread, &#39;intent&#39;, value)</code> on each turn</td>
+</tr>
+<tr>
+<td>Entity accumulation</td>
+<td>One field per entity: <code>set(thread, &#39;city&#39;, &#39;Sofia&#39;)</code></td>
+</tr>
+<tr>
+<td>Conversation stage</td>
+<td><code>set(thread, &#39;stage&#39;, &#39;collecting_dates&#39;)</code></td>
+</tr>
+<tr>
+<td>Intermediate results</td>
+<td>Store JSON: <code>set(thread, &#39;search_results&#39;, JSON.stringify(data))</code></td>
+</tr>
+<tr>
+<td>Error recovery</td>
+<td><code>set(thread, &#39;last_failed_step&#39;, &#39;payment&#39;)</code></td>
+</tr>
+<tr>
+<td>Session keepalive</td>
+<td><code>touch(thread)</code> at start of each invocation</td>
+</tr>
+</tbody></table>
+<h2>Per-Field TTL Override</h2>
+<p>For fields with different freshness requirements, override TTL per write:</p>
+<pre><code class="language-typescript">// Short-lived field: search results that go stale quickly
+await cache.session.set(threadId, &#39;flight_prices&#39;, JSON.stringify(prices), {
+  ttl: 300, // 5 minutes
+});
+
+// Long-lived field: user preferences that persist across sessions
+await cache.session.set(threadId, &#39;preferred_seat&#39;, &#39;aisle&#39;, {
+  ttl: 86400 * 30, // 30 days
+});
+</code></pre>
+<p>The per-call TTL overrides <code>tierDefaults.session.ttl</code> for that specific field.</p>
+
+
+<div class="nav-prev-next">
+<a href="02-llm-and-tool-cache.html" class="prev"><span class="label">← Previous</span><span class="title">02 - LLM & Tool Cache</span></a>
+<a href="04-langgraph.html" class="next"><span class="label">Next →</span><span class="title">04 - LangGraph Checkpointing</span></a>
+</div>
+</article>
+<button class="theme-toggle" onclick="toggleTheme()" aria-label="Toggle theme"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/></svg></button>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+<script>hljs.highlightAll();</script>
+<script>function toggleTheme(){var b=document.body,l=b.classList.toggle("light");localStorage.setItem("theme",l?"light":"dark")}(function(){if(localStorage.getItem("theme")==="light")document.body.classList.add("light")})()</script>
+</body>
+</html>

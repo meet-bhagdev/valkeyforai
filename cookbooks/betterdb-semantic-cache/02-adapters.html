@@ -1,0 +1,185 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>02 - LangChain & Vercel AI Adapters - Valkey for AI</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../cookbook.css">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css">
+<style>
+body.light .nav{background:rgba(255,255,255,.9)!important}
+body.light pre{background:rgba(0,0,0,.03)!important;border-color:rgba(0,0,0,.08)!important}
+body.light code{color:#1d1d1f}
+body.light .callout{background:rgba(0,0,0,.02);border-color:rgba(0,0,0,.08)}
+body.light table{border-color:rgba(0,0,0,.08)}
+body.light th{background:rgba(0,0,0,.04)}
+body.light td{border-color:rgba(0,0,0,.06)}
+body.light{--bg:#fff;--bg-elevated:#f5f5f7;--bg-card:rgba(0,0,0,.03);--bg-card-hover:rgba(0,0,0,.06);--brd:rgba(0,0,0,.08);--t1:#1d1d1f;--t2:rgba(29,29,31,.6);--t3:rgba(29,29,31,.4)}
+.theme-toggle{background:rgba(128,128,128,.12);border:1px solid rgba(128,128,128,.2);border-radius:100px;width:36px;height:36px;display:flex;align-items:center;justify-content:center;cursor:pointer;padding:0;position:fixed;top:18px;right:24px;z-index:1001}
+pre{position:relative}
+pre code.hljs{background:transparent!important;padding:0}
+</style>
+</head>
+<body>
+<nav class="nav"><div class="nav-inner"><a href="/" class="nav-logo"><img src="/valkey-logo.svg" alt="Valkey"><span class="accent">for ai</span></a><div class="nav-links"><a href="/#use-cases">Use Cases</a><a href="/#frameworks">Frameworks</a><a href="https://github.com/meet-bhagdev/valkeyforai/tree/main" target="_blank">GitHub</a></div></div></nav>
+<article>
+<div class="breadcrumb"><a href="/">Home</a> → <a href="/cookbooks/betterdb-semantic-cache/">@betterdb/semantic-cache</a> → 02 Adapters</div>
+<div class="meta"><span class="diff-medium">Intermediate</span><span class="lang">TypeScript</span><span class="lang">~20 min</span></div>
+<h1>LangChain &amp; Vercel AI <span class="gradient">Adapters</span></h1>
+<p class="lead">Drop semantic caching into LangChain or the Vercel AI SDK with one import. No check/store loops - the adapter handles hit/miss transparently.</p>
+
+<p>Cookbook 01 showed the direct <code>check()</code> / <code>store()</code> API. For applications already using LangChain or the Vercel AI SDK, the package ships with first-class adapters that plug semantic caching in at the framework level - no manual hit/miss loops required.</p>
+<h2>LangChain Adapter</h2>
+<p><code>BetterDBSemanticCache</code> implements LangChain&#39;s <code>BaseCache</code> interface and is passed directly to any <code>ChatModel</code> or <code>LLM</code> constructor via the <code>cache</code> option.</p>
+<h3>Setup</h3>
+<pre><code class="language-typescript">import Valkey from &#39;iovalkey&#39;;
+import { SemanticCache } from &#39;@betterdb/semantic-cache&#39;;
+import { BetterDBSemanticCache } from &#39;@betterdb/semantic-cache/langchain&#39;;
+import { ChatOpenAI } from &#39;@langchain/openai&#39;;
+import OpenAI from &#39;openai&#39;;
+
+const openai = new OpenAI();
+const client = new Valkey({ host: &#39;localhost&#39;, port: 6379 });
+
+const cache = new SemanticCache({
+  client,
+  embedFn: async (text) =&gt; {
+    const res = await openai.embeddings.create({
+      model: &#39;text-embedding-3-small&#39;,
+      input: text,
+    });
+    return res.data[0].embedding;
+  },
+  defaultThreshold: 0.15,
+});
+
+const model = new ChatOpenAI({
+  model: &#39;gpt-4o-mini&#39;,
+  cache: new BetterDBSemanticCache({ cache }),
+});
+</code></pre>
+<h3>Usage</h3>
+<pre><code class="language-typescript">import { HumanMessage } from &#39;@langchain/core/messages&#39;;
+
+// First call - miss, calls OpenAI
+const r1 = await model.invoke([new HumanMessage(&#39;What is Valkey?&#39;)]);
+console.log(r1.content);
+// &quot;Valkey is an open-source, in-memory data structure store...&quot;
+
+// Second call with different phrasing - hit, served from Valkey
+const r2 = await model.invoke([new HumanMessage(&#39;Explain what Valkey is.&#39;)]);
+console.log(r2.content);
+// &quot;Valkey is an open-source, in-memory data structure store...&quot;  (same response, &lt;1ms)
+
+await client.quit();
+</code></pre>
+<h3>Scoping by Model</h3>
+<p>By default, cache entries are shared across all models. Set <code>filterByModel: true</code> to scope entries to the specific LLM configuration - useful when different models produce meaningfully different responses to the same prompt:</p>
+<pre><code class="language-typescript">const modelAwareCache = new BetterDBSemanticCache({
+  cache,
+  filterByModel: true, // a gpt-4o cache entry won&#39;t hit for gpt-4o-mini
+});
+</code></pre>
+<hr>
+<h2>Vercel AI SDK Adapter</h2>
+<p><code>createSemanticCacheMiddleware</code> wraps any Vercel AI SDK language model. Use it with <code>wrapLanguageModel()</code> from the <code>ai</code> package.</p>
+<h3>Setup</h3>
+<pre><code class="language-typescript">import Valkey from &#39;iovalkey&#39;;
+import { SemanticCache } from &#39;@betterdb/semantic-cache&#39;;
+import { createSemanticCacheMiddleware } from &#39;@betterdb/semantic-cache/ai&#39;;
+import { wrapLanguageModel, generateText } from &#39;ai&#39;;
+import { openai } from &#39;@ai-sdk/openai&#39;;
+
+const client = new Valkey({ host: &#39;localhost&#39;, port: 6379 });
+
+const cache = new SemanticCache({
+  client,
+  embedFn: async (text) =&gt; {
+    // same embed function as above
+  },
+  defaultThreshold: 0.15,
+});
+
+const model = wrapLanguageModel({
+  model: openai(&#39;gpt-4o-mini&#39;),
+  middleware: createSemanticCacheMiddleware({ cache }),
+});
+</code></pre>
+<h3>Usage</h3>
+<pre><code class="language-typescript">// First call - miss
+const { text: t1 } = await generateText({
+  model,
+  prompt: &#39;What is Valkey?&#39;,
+});
+console.log(t1);
+
+// Second call - hit, returned from Valkey, no tokens consumed
+const { text: t2 } = await generateText({
+  model,
+  prompt: &#39;Can you describe what Valkey is?&#39;,
+});
+console.log(t2); // same response as t1
+
+await client.quit();
+</code></pre>
+<p>The middleware intercepts <code>doGenerate()</code> calls before they reach OpenAI. On a hit it returns the cached response directly - no API call, no tokens, no latency.</p>
+<blockquote>
+<p><strong>Streaming:</strong> The Vercel AI SDK adapter caches <code>generateText()</code> calls only. Streaming responses via <code>streamText()</code> are not cached - accumulate the full response and call <code>cache.store()</code> manually if you need to cache streamed output.</p>
+</blockquote>
+<hr>
+<h2>Direct API vs Adapters</h2>
+<table>
+<thead>
+<tr>
+<th></th>
+<th>Direct API</th>
+<th>LangChain Adapter</th>
+<th>Vercel AI SDK Adapter</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>Framework dependency</td>
+<td>None</td>
+<td><code>@langchain/core</code></td>
+<td><code>ai</code> package</td>
+</tr>
+<tr>
+<td><code>check()</code> / <code>store()</code> control</td>
+<td>Full</td>
+<td>Automatic</td>
+<td>Automatic</td>
+</tr>
+<tr>
+<td>Works with any LLM client</td>
+<td>Yes</td>
+<td>LangChain models only</td>
+<td>Vercel AI models only</td>
+</tr>
+<tr>
+<td>Streaming support</td>
+<td>Manual</td>
+<td>Automatic (no cache)</td>
+<td>No (generateText only)</td>
+</tr>
+<tr>
+<td>Best for</td>
+<td>Custom pipelines</td>
+<td>LangChain agents</td>
+<td>Next.js / AI SDK apps</td>
+</tr>
+</tbody></table>
+<p>Use the direct API when you need fine-grained control - for example, to pass per-request TTLs, categories, or to handle uncertain hits differently. Use an adapter when you want zero-boilerplate caching for an existing LangChain or Vercel AI SDK application.</p>
+
+
+<div class="nav-prev-next">
+<a href="01-getting-started.html" class="prev"><span class="label">← Previous</span><span class="title">01 - Getting Started</span></a>
+<a href="03-production.html" class="next"><span class="label">Next →</span><span class="title">03 - Production Patterns</span></a>
+</div>
+</article>
+<button class="theme-toggle" onclick="toggleTheme()" aria-label="Toggle theme"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/></svg></button>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+<script>hljs.highlightAll();</script>
+<script>function toggleTheme(){var b=document.body,l=b.classList.toggle("light");localStorage.setItem("theme",l?"light":"dark")}(function(){if(localStorage.getItem("theme")==="light")document.body.classList.add("light")})()</script>
+</body>
+</html>

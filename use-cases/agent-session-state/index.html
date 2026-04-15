@@ -32,23 +32,31 @@ body.light .nav{background:rgba(255,255,255,.9)!important;border-color:rgba(0,0,
       <p>Step-by-step guides for agent session state with Valkey</p>
     </div>
     <div class="uc-panel-body">
-      <div style="background:linear-gradient(135deg,rgba(245,158,11,.08),rgba(249,115,22,.08));border:1px solid rgba(245,158,11,.2);border-radius:12px;padding:32px;text-align:center">
-        <div style="font-size:32px;margin-bottom:12px">🚧</div>
-        <h3 style="font-size:20px;font-weight:800;margin-bottom:8px">Cookbooks Coming Soon</h3>
-        <p style="font-size:14px;color:var(--t2,rgba(245,245,247,.6));max-width:400px;margin:0 auto 20px">We're building comprehensive guides for persisting agent state, tool calls, and reasoning chains with Valkey.</p>
-        <p style="font-size:13px;color:var(--t3,rgba(245,245,247,.4))">In the meantime, explore these related patterns:</p>
-        <div style="display:flex;gap:8px;justify-content:center;flex-wrap:wrap;margin-top:16px">
-          <a href="/use-cases/conversation-memory/" class="btn btn-outline" style="font-size:13px;padding:8px 16px">Conversation Memory &rarr;</a>
-          <a href="/cookbooks/mem0/" class="btn btn-outline" style="font-size:13px;padding:8px 16px">Mem0 Memory Layer &rarr;</a>
-          <a href="/cookbooks/langchain/" class="btn btn-outline" style="font-size:13px;padding:8px 16px">LangGraph Checkpointing &rarr;</a>
+      <div class="cb-item"><a href="/cookbooks/betterdb-agent-cache/03-session-store.html">
+        <div class="cb-num">03</div>
+        <div class="cb-content">
+          <h3>Agent Session Store</h3>
+          <p>Per-field TTL, sliding-window refresh, and atomic state updates. Store intent, reasoning chains, and extracted entities across invocations.</p>
+          <div class="cb-tags"><span>Intermediate</span><span>TypeScript</span><span>@betterdb/agent-cache</span></div>
         </div>
+      </a></div>
+      <div class="cb-item"><a href="/cookbooks/betterdb-agent-cache/04-langgraph.html">
+        <div class="cb-num">04</div>
+        <div class="cb-content">
+          <h3>LangGraph Checkpointing</h3>
+          <p>BetterDBSaver persists LangGraph graph state on vanilla Valkey 7+ - no Redis 8, no RedisJSON, no modules required.</p>
+          <div class="cb-tags"><span>Advanced</span><span>TypeScript</span><span>@betterdb/agent-cache</span></div>
+        </div>
+      </a></div>
+      <div style="margin-top:16px;text-align:center">
+        <a href="/cookbooks/betterdb-agent-cache/" class="btn btn-primary" style="font-size:14px">All @betterdb/agent-cache Cookbooks &rarr;</a>
       </div>
     </div>
   </div>
 </div>
 
 <div class="uc-github"><div class="uc-github-card">
-  <div><h3>Star the repo to get notified</h3><p>All cookbooks are open source. Star the repo to follow progress on Agent Session State.</p></div>
+  <div><h3>Explore the package</h3><p>All cookbooks are open source. <code>@betterdb/agent-cache</code> is available on npm and works on any Valkey 7+ deployment.</p></div>
   <div class="uc-github-card-actions">
     <a href="https://github.com/meet-bhagdev/valkeyforai/tree/main" target="_blank" class="btn btn-primary">View on GitHub &rarr;</a>
     <a href="/" class="btn btn-outline">All Use Cases &rarr;</a>

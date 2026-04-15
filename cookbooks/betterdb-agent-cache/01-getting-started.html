@@ -1,0 +1,186 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>01 - Getting Started with @betterdb/agent-cache - Valkey for AI</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../cookbook.css">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css">
+<style>
+body.light .nav{background:rgba(255,255,255,.9)!important}
+body.light pre{background:rgba(0,0,0,.03)!important;border-color:rgba(0,0,0,.08)!important}
+body.light code{color:#1d1d1f}
+body.light .callout{background:rgba(0,0,0,.02);border-color:rgba(0,0,0,.08)}
+body.light table{border-color:rgba(0,0,0,.08)}
+body.light th{background:rgba(0,0,0,.04)}
+body.light td{border-color:rgba(0,0,0,.06)}
+body.light{--bg:#fff;--bg-elevated:#f5f5f7;--bg-card:rgba(0,0,0,.03);--bg-card-hover:rgba(0,0,0,.06);--brd:rgba(0,0,0,.08);--t1:#1d1d1f;--t2:rgba(29,29,31,.6);--t3:rgba(29,29,31,.4)}
+.theme-toggle{background:rgba(128,128,128,.12);border:1px solid rgba(128,128,128,.2);border-radius:100px;width:36px;height:36px;display:flex;align-items:center;justify-content:center;cursor:pointer;padding:0;position:fixed;top:18px;right:24px;z-index:1001}
+pre{position:relative}
+pre code.hljs{background:transparent!important;padding:0}
+</style>
+</head>
+<body>
+<nav class="nav"><div class="nav-inner"><a href="/" class="nav-logo"><img src="/valkey-logo.svg" alt="Valkey"><span class="accent">for ai</span></a><div class="nav-links"><a href="/#use-cases">Use Cases</a><a href="/#frameworks">Frameworks</a><a href="https://github.com/meet-bhagdev/valkeyforai/tree/main" target="_blank">GitHub</a></div></div></nav>
+<article>
+<div class="breadcrumb"><a href="/">Home</a> → <a href="/cookbooks/betterdb-agent-cache/">@betterdb/agent-cache</a> → 01 Getting Started</div>
+<div class="meta"><span class="diff-easy">Beginner</span><span class="lang">TypeScript</span><span class="lang">~15 min</span></div>
+<h1>Getting Started with <span class="gradient">@betterdb/agent-cache</span></h1>
+<p class="lead">Three cache tiers - LLM responses, tool results, and session state - behind one connection. Works on vanilla Valkey 7+ with no modules.</p>
+
+<p><code>@betterdb/agent-cache</code> is a multi-tier exact-match cache for AI agent workloads backed by Valkey. It combines three cache tiers behind one connection:</p>
+<ul>
+<li><strong>LLM tier</strong> - caches full LLM responses by exact match on model + messages + params</li>
+<li><strong>Tool tier</strong> - caches tool/function call results by tool name and argument hash</li>
+<li><strong>Session tier</strong> - key-value store for agent state with per-field TTL</li>
+</ul>
+<p>Unlike <code>langgraph-checkpoint-redis</code> or similar packages, it requires <strong>no Valkey modules</strong> - it works on vanilla Valkey 7+, Amazon ElastiCache, Google Cloud Memorystore, and Amazon MemoryDB with no configuration changes.</p>
+<h2>Prerequisites</h2>
+<ul>
+<li><strong>Valkey 7+</strong> (no modules needed - no <code>valkey-search</code>, no RedisJSON)</li>
+<li>Or Amazon ElastiCache for Valkey / Redis, Google Cloud Memorystore, Amazon MemoryDB</li>
+<li>Node.js 20+</li>
+</ul>
+<h2>Step 1: Start Valkey</h2>
+<p>No special image needed - the standard Valkey image works:</p>
+<pre><code class="language-bash">docker run -d --name valkey -p 6379:6379 valkey/valkey:latest
+</code></pre>
+<pre><code class="language-bash">docker exec valkey valkey-cli PING
+# PONG
+</code></pre>
+<h2>Step 2: Install Packages</h2>
+<pre><code class="language-bash">npm install @betterdb/agent-cache iovalkey
+</code></pre>
+<h2>Step 3: Create an AgentCache</h2>
+<pre><code class="language-typescript">import Valkey from &#39;iovalkey&#39;;
+import { AgentCache } from &#39;@betterdb/agent-cache&#39;;
+
+const client = new Valkey({ host: &#39;localhost&#39;, port: 6379 });
+
+const cache = new AgentCache({
+  client,
+  tierDefaults: {
+    llm:     { ttl: 3600  }, // LLM responses: 1 hour
+    tool:    { ttl: 300   }, // Tool results: 5 minutes
+    session: { ttl: 1800  }, // Session state: 30 minutes (sliding)
+  },
+  costTable: {
+    &#39;gpt-4o&#39;:      { inputPer1k: 0.0025, outputPer1k: 0.010 },
+    &#39;gpt-4o-mini&#39;: { inputPer1k: 0.00015, outputPer1k: 0.0006 },
+  },
+});
+</code></pre>
+<p>No <code>initialize()</code> call needed - all three tiers use plain Valkey commands (SET, GET, HINCRBY) with no index creation.</p>
+<h2>Step 4: LLM Tier</h2>
+<pre><code class="language-typescript">const params = {
+  model: &#39;gpt-4o-mini&#39;,
+  messages: [{ role: &#39;user&#39;, content: &#39;What is Valkey?&#39; }],
+  temperature: 0,
+};
+
+// Check for a cached response
+const llmResult = await cache.llm.check(params);
+
+if (llmResult.hit) {
+  console.log(&#39;LLM cache HIT:&#39;, llmResult.response);
+} else {
+  console.log(&#39;LLM cache MISS → calling LLM...&#39;);
+  const response = await callLlm(params); // your LLM call
+
+  await cache.llm.store(params, response, {
+    tokens: { input: 14, output: 62 }, // enables cost tracking
+  });
+}
+</code></pre>
+<p>The cache key is a SHA-256 hash of the canonicalized params (model, messages, temperature, top_p, max_tokens, tools). <code>{ messages: [...], model: &#39;gpt-4o&#39; }</code> and <code>{ model: &#39;gpt-4o&#39;, messages: [...] }</code> produce the same key.</p>
+<h2>Step 5: Tool Tier</h2>
+<pre><code class="language-typescript">const toolName = &#39;get_weather&#39;;
+const toolArgs = { city: &#39;Sofia&#39;, units: &#39;metric&#39; };
+
+const toolResult = await cache.tool.check(toolName, toolArgs);
+
+if (toolResult.hit) {
+  console.log(&#39;Tool cache HIT:&#39;, toolResult.response);
+} else {
+  console.log(&#39;Tool cache MISS → calling API...&#39;);
+  const data = await getWeather(toolArgs); // your tool call
+
+  await cache.tool.store(toolName, toolArgs, JSON.stringify(data), {
+    cost: 0.001, // API call cost in dollars, for tracking
+  });
+}
+</code></pre>
+<p>Tool args are serialized with recursively sorted keys before hashing, so <code>{ city: &#39;Sofia&#39;, units: &#39;metric&#39; }</code> and <code>{ units: &#39;metric&#39;, city: &#39;Sofia&#39; }</code> hit the same cache entry.</p>
+<h2>Step 6: Session Tier</h2>
+<pre><code class="language-typescript">const threadId = &#39;user-42-session-1&#39;;
+
+// Store agent state fields
+await cache.session.set(threadId, &#39;last_intent&#39;, &#39;book_flight&#39;);
+await cache.session.set(threadId, &#39;destination&#39;, &#39;Sofia&#39;);
+await cache.session.set(threadId, &#39;departure_date&#39;, &#39;2026-06-01&#39;);
+
+// Retrieve a field
+const intent = await cache.session.get(threadId, &#39;last_intent&#39;);
+// &#39;book_flight&#39;
+
+// Get all fields for a thread
+const state = await cache.session.getAll(threadId);
+// { last_intent: &#39;book_flight&#39;, destination: &#39;Sofia&#39;, departure_date: &#39;2026-06-01&#39; }
+</code></pre>
+<p>Each <code>get()</code> refreshes the TTL on that field (sliding window). The session stays alive as long as the agent is actively using it.</p>
+<h2>Key Formats</h2>
+<p>All keys are prefixed with the <code>name</code> option (default: <code>betterdb_ac</code>):</p>
+<table>
+<thead>
+<tr>
+<th>Tier</th>
+<th>Key Pattern</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>LLM cache</td>
+<td><code>betterdb_ac:llm:{sha256hash}</code></td>
+</tr>
+<tr>
+<td>Tool cache</td>
+<td><code>betterdb_ac:tool:{toolName}:{sha256hash}</code></td>
+</tr>
+<tr>
+<td>Session field</td>
+<td><code>betterdb_ac:session:{threadId}:{field}</code></td>
+</tr>
+<tr>
+<td>Stats hash</td>
+<td><code>betterdb_ac:stats</code></td>
+</tr>
+</tbody></table>
+<p>To use a separate namespace per environment or application:</p>
+<pre><code class="language-typescript">const cache = new AgentCache({
+  client,
+  name: &#39;myapp_prod&#39;, // all keys prefixed with &#39;myapp_prod:&#39;
+});
+</code></pre>
+<h2>Cleanup</h2>
+<pre><code class="language-typescript">// Destroy all state for a thread (session + LangGraph checkpoints)
+await cache.session.destroyThread(threadId);
+
+// Invalidate all LLM cache entries for a model
+await cache.llm.invalidateByModel(&#39;gpt-4o-mini&#39;);
+
+// Close the client when done
+await client.quit();
+</code></pre>
+
+
+<div class="nav-prev-next">
+<div></div>
+<a href="02-llm-and-tool-cache.html" class="next"><span class="label">Next →</span><span class="title">02 - LLM & Tool Cache</span></a>
+</div>
+</article>
+<button class="theme-toggle" onclick="toggleTheme()" aria-label="Toggle theme"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/></svg></button>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+<script>hljs.highlightAll();</script>
+<script>function toggleTheme(){var b=document.body,l=b.classList.toggle("light");localStorage.setItem("theme",l?"light":"dark")}(function(){if(localStorage.getItem("theme")==="light")document.body.classList.add("light")})()</script>
+</body>
+</html>

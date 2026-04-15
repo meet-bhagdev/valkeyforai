@@ -1,0 +1,179 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>01 - Getting Started with @betterdb/semantic-cache - Valkey for AI</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../cookbook.css">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css">
+<style>
+body.light .nav{background:rgba(255,255,255,.9)!important}
+body.light pre{background:rgba(0,0,0,.03)!important;border-color:rgba(0,0,0,.08)!important}
+body.light code{color:#1d1d1f}
+body.light .callout{background:rgba(0,0,0,.02);border-color:rgba(0,0,0,.08)}
+body.light table{border-color:rgba(0,0,0,.08)}
+body.light th{background:rgba(0,0,0,.04)}
+body.light td{border-color:rgba(0,0,0,.06)}
+body.light{--bg:#fff;--bg-elevated:#f5f5f7;--bg-card:rgba(0,0,0,.03);--bg-card-hover:rgba(0,0,0,.06);--brd:rgba(0,0,0,.08);--t1:#1d1d1f;--t2:rgba(29,29,31,.6);--t3:rgba(29,29,31,.4)}
+.theme-toggle{background:rgba(128,128,128,.12);border:1px solid rgba(128,128,128,.2);border-radius:100px;width:36px;height:36px;display:flex;align-items:center;justify-content:center;cursor:pointer;padding:0;position:fixed;top:18px;right:24px;z-index:1001}
+pre{position:relative}
+pre code.hljs{background:transparent!important;padding:0}
+</style>
+</head>
+<body>
+<nav class="nav"><div class="nav-inner"><a href="/" class="nav-logo"><img src="/valkey-logo.svg" alt="Valkey"><span class="accent">for ai</span></a><div class="nav-links"><a href="/#use-cases">Use Cases</a><a href="/#frameworks">Frameworks</a><a href="https://github.com/meet-bhagdev/valkeyforai/tree/main" target="_blank">GitHub</a></div></div></nav>
+<article>
+<div class="breadcrumb"><a href="/">Home</a> → <a href="/cookbooks/betterdb-semantic-cache/">@betterdb/semantic-cache</a> → 01 Getting Started</div>
+<div class="meta"><span class="diff-easy">Beginner</span><span class="lang">TypeScript</span><span class="lang">~15 min</span></div>
+<h1>Getting Started with <span class="gradient">@betterdb/semantic-cache</span></h1>
+<p class="lead">Install the first Valkey-native semantic cache. Connect, store a response, and serve the next semantically similar prompt from cache - no LLM call needed.</p>
+
+<p><code>@betterdb/semantic-cache</code> is a standalone semantic cache for LLM applications backed by Valkey. It uses the <code>valkey-search</code> module for vector similarity matching so semantically similar prompts - &quot;What is Valkey?&quot; and &quot;Can you explain Valkey?&quot; - return the same cached response without calling the LLM again.</p>
+<p>Unlike other semantic cache libraries it is <strong>Valkey-native</strong> (handles <code>valkey-search</code> API differences from Redis), <strong>standalone</strong> (no LangChain or LiteLLM dependency), and ships with <strong>built-in OpenTelemetry tracing and Prometheus metrics</strong> at the cache-operation level, not just at the HTTP level.</p>
+<h2>Prerequisites</h2>
+<ul>
+<li>Valkey 8.0+ with the <code>valkey-search</code> module, or Amazon ElastiCache for Valkey 8.0+, or Google Cloud Memorystore for Valkey</li>
+<li>Node.js 20+</li>
+<li>An embedding provider (OpenAI, Voyage AI, Cohere, or any <code>(text: string) =&gt; Promise&lt;number[]&gt;</code> function)</li>
+</ul>
+<h2>Step 1: Start Valkey</h2>
+<p>The <code>valkey-bundle</code> image includes the <code>valkey-search</code> module required for vector indexing.</p>
+<pre><code class="language-bash">docker run -d --name valkey -p 6379:6379 valkey/valkey-bundle:latest
+</code></pre>
+<p>Verify the module is loaded:</p>
+<pre><code class="language-bash">docker exec valkey valkey-cli MODULE LIST
+# Should include &quot;search&quot;
+</code></pre>
+<h2>Step 2: Install Packages</h2>
+<pre><code class="language-bash">npm install @betterdb/semantic-cache iovalkey
+</code></pre>
+<p><code>iovalkey</code> is a peer dependency - it is the client library used to communicate with Valkey.</p>
+<h2>Step 3: Write an Embedding Function</h2>
+<p>The cache accepts any function with the signature <code>(text: string) =&gt; Promise&lt;number[]&gt;</code>. Here is an example using OpenAI:</p>
+<pre><code class="language-typescript">import OpenAI from &#39;openai&#39;;
+
+const openai = new OpenAI(); // reads OPENAI_API_KEY from env
+
+async function embedFn(text: string): Promise&lt;number[]&gt; {
+  const res = await openai.embeddings.create({
+    model: &#39;text-embedding-3-small&#39;,
+    input: text,
+  });
+  return res.data[0].embedding; // 1536-dimensional vector
+}
+</code></pre>
+<p>Any provider works. Voyage AI, Cohere, AWS Bedrock Titan, and local models served over HTTP all work as long as they return a <code>number[]</code>.</p>
+<h2>Step 4: Initialize the Cache</h2>
+<pre><code class="language-typescript">import Valkey from &#39;iovalkey&#39;;
+import { SemanticCache } from &#39;@betterdb/semantic-cache&#39;;
+
+const client = new Valkey({ host: &#39;localhost&#39;, port: 6379 });
+
+const cache = new SemanticCache({
+  client,
+  embedFn,
+  defaultThreshold: 0.15, // cosine distance - see Step 6
+  defaultTtl: 3600,        // entries expire after 1 hour
+});
+
+await cache.initialize(); // creates the Valkey search index
+</code></pre>
+<p><code>initialize()</code> is safe to call on every startup - it is a no-op if the index already exists.</p>
+<h2>Step 5: Store and Check</h2>
+<pre><code class="language-typescript">import OpenAI from &#39;openai&#39;;
+
+const llm = new OpenAI();
+
+async function ask(prompt: string): Promise&lt;string&gt; {
+  // 1. Check for a semantically similar cached prompt
+  const cached = await cache.check(prompt);
+
+  if (cached.hit) {
+    console.log(`Cache HIT  (score ${cached.similarity?.toFixed(4)})`);
+    return cached.response!;
+  }
+
+  // 2. Miss - call the LLM
+  console.log(&#39;Cache MISS → calling LLM...&#39;);
+  const completion = await llm.chat.completions.create({
+    model: &#39;gpt-4o-mini&#39;,
+    messages: [{ role: &#39;user&#39;, content: prompt }],
+  });
+  const response = completion.choices[0].message.content!;
+
+  // 3. Store so future similar prompts are served from cache
+  await cache.store(prompt, response);
+  return response;
+}
+
+// First call: miss, calls LLM, stores result
+await ask(&#39;What is Valkey?&#39;);
+
+// Second call: hit, returned from cache
+await ask(&#39;Can you explain what Valkey is?&#39;);
+
+await client.quit();
+</code></pre>
+<p>Expected output:</p>
+<pre><code>Cache MISS → calling LLM...
+Cache HIT  (score 0.0821)
+</code></pre>
+<p>The second prompt has a cosine distance of ~0.08 from the first - well below the 0.15 threshold - so it is served from cache.</p>
+<h2>Step 6: Understanding the Threshold</h2>
+<p><code>defaultThreshold</code> is a <strong>cosine distance</strong> on the 0–2 scale, not the 0–1 cosine similarity scale. A hit occurs when <code>score &lt;= threshold</code>.</p>
+<table>
+<thead>
+<tr>
+<th>Distance</th>
+<th>Meaning</th>
+<th>Recommendation</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>0.05</code></td>
+<td>Near-identical phrasing</td>
+<td>Medical, legal, financial</td>
+</tr>
+<tr>
+<td><code>0.10</code></td>
+<td>Very similar (package default)</td>
+<td>Strict quality requirements</td>
+</tr>
+<tr>
+<td><code>0.15–0.20</code></td>
+<td>Balanced</td>
+<td>General chatbots - start here</td>
+</tr>
+<tr>
+<td><code>0.30+</code></td>
+<td>Broad matching</td>
+<td>FAQ bots with high hit-rate goal</td>
+</tr>
+</tbody></table>
+<blockquote>
+<p><strong>Tip:</strong> Start at <code>0.15</code> and tune based on observed hit rates and false-positive rates. Cookbook 03 covers threshold tuning in detail.</p>
+</blockquote>
+<h2>Step 7: Inspect Stats</h2>
+<pre><code class="language-typescript">const stats = await cache.stats();
+console.log(stats);
+// { hits: 3, misses: 2, total: 5, hitRate: 0.6 }
+</code></pre>
+<p>Stats are stored as atomic counters in Valkey - they persist across restarts and accumulate across all processes sharing the same instance.</p>
+<pre><code class="language-typescript">const info = await cache.indexInfo();
+console.log(info);
+// { name: &#39;betterdb_scache&#39;, numDocs: 48, dimension: 1536, indexingState: &#39;ready&#39; }
+</code></pre>
+
+
+<div class="nav-prev-next">
+<div></div>
+<a href="02-adapters.html" class="next"><span class="label">Next →</span><span class="title">02 - LangChain & Vercel AI Adapters</span></a>
+</div>
+</article>
+<button class="theme-toggle" onclick="toggleTheme()" aria-label="Toggle theme"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/></svg></button>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+<script>hljs.highlightAll();</script>
+<script>function toggleTheme(){var b=document.body,l=b.classList.toggle("light");localStorage.setItem("theme",l?"light":"dark")}(function(){if(localStorage.getItem("theme")==="light")document.body.classList.add("light")})()</script>
+</body>
+</html>

@@ -1,0 +1,57 @@
+{
+  "trackName": "@betterdb/semantic-cache",
+  "cookbooks": [
+    {
+      "num": "01",
+      "source": "01-getting-started.md",
+      "output": "01-getting-started.html",
+      "title": "Getting Started with @betterdb/semantic-cache",
+      "h1": "Getting Started with <span class=\"gradient\">@betterdb/semantic-cache</span>",
+      "lead": "Install the first Valkey-native semantic cache. Connect, store a response, and serve the next semantically similar prompt from cache - no LLM call needed.",
+      "breadcrumb": "Getting Started",
+      "difficulty": "Beginner",
+      "time": "15 min",
+      "language": "TypeScript",
+      "next": {
+        "file": "02-adapters.html",
+        "title": "02 - LangChain & Vercel AI Adapters"
+      }
+    },
+    {
+      "num": "02",
+      "source": "02-adapters.md",
+      "output": "02-adapters.html",
+      "title": "LangChain & Vercel AI Adapters",
+      "h1": "LangChain &amp; Vercel AI <span class=\"gradient\">Adapters</span>",
+      "lead": "Drop semantic caching into LangChain or the Vercel AI SDK with one import. No check/store loops - the adapter handles hit/miss transparently.",
+      "breadcrumb": "Adapters",
+      "difficulty": "Intermediate",
+      "time": "20 min",
+      "language": "TypeScript",
+      "prev": {
+        "file": "01-getting-started.html",
+        "title": "01 - Getting Started"
+      },
+      "next": {
+        "file": "03-production.html",
+        "title": "03 - Production Patterns"
+      }
+    },
+    {
+      "num": "03",
+      "source": "03-production.md",
+      "output": "03-production.html",
+      "title": "Production Patterns",
+      "h1": "Production <span class=\"gradient\">Patterns</span>",
+      "lead": "Threshold tuning, uncertain hit strategies, per-category overrides, TTL management, invalidation, and built-in Prometheus metrics.",
+      "breadcrumb": "Production Patterns",
+      "difficulty": "Advanced",
+      "time": "20 min",
+      "language": "TypeScript",
+      "prev": {
+        "file": "02-adapters.html",
+        "title": "02 - Adapters"
+      }
+    }
+  ]
+}

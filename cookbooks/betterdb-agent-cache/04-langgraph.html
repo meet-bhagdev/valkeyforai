@@ -1,0 +1,226 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>04 - LangGraph Checkpointing - Valkey for AI</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../cookbook.css">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css">
+<style>
+body.light .nav{background:rgba(255,255,255,.9)!important}
+body.light pre{background:rgba(0,0,0,.03)!important;border-color:rgba(0,0,0,.08)!important}
+body.light code{color:#1d1d1f}
+body.light .callout{background:rgba(0,0,0,.02);border-color:rgba(0,0,0,.08)}
+body.light table{border-color:rgba(0,0,0,.08)}
+body.light th{background:rgba(0,0,0,.04)}
+body.light td{border-color:rgba(0,0,0,.06)}
+body.light{--bg:#fff;--bg-elevated:#f5f5f7;--bg-card:rgba(0,0,0,.03);--bg-card-hover:rgba(0,0,0,.06);--brd:rgba(0,0,0,.08);--t1:#1d1d1f;--t2:rgba(29,29,31,.6);--t3:rgba(29,29,31,.4)}
+.theme-toggle{background:rgba(128,128,128,.12);border:1px solid rgba(128,128,128,.2);border-radius:100px;width:36px;height:36px;display:flex;align-items:center;justify-content:center;cursor:pointer;padding:0;position:fixed;top:18px;right:24px;z-index:1001}
+pre{position:relative}
+pre code.hljs{background:transparent!important;padding:0}
+</style>
+</head>
+<body>
+<nav class="nav"><div class="nav-inner"><a href="/" class="nav-logo"><img src="/valkey-logo.svg" alt="Valkey"><span class="accent">for ai</span></a><div class="nav-links"><a href="/#use-cases">Use Cases</a><a href="/#frameworks">Frameworks</a><a href="https://github.com/meet-bhagdev/valkeyforai/tree/main" target="_blank">GitHub</a></div></div></nav>
+<article>
+<div class="breadcrumb"><a href="/">Home</a> → <a href="/cookbooks/betterdb-agent-cache/">@betterdb/agent-cache</a> → 04 LangGraph Checkpointing</div>
+<div class="meta"><span class="diff-hard">Advanced</span><span class="lang">TypeScript</span><span class="lang">~25 min</span></div>
+<h1>LangGraph <span class="gradient">Checkpointing</span></h1>
+<p class="lead">Persist LangGraph agent state on vanilla Valkey 7+ with BetterDBSaver - no Redis 8, no RedisJSON, no RediSearch modules required.</p>
+
+<p><code>BetterDBSaver</code> is a LangGraph checkpoint saver backed by <code>@betterdb/agent-cache</code>. It stores graph state on <strong>vanilla Valkey 7+</strong> with no modules required.</p>
+<h2>Why BetterDBSaver vs langgraph-checkpoint-redis</h2>
+<table>
+<thead>
+<tr>
+<th></th>
+<th><code>BetterDBSaver</code></th>
+<th><code>langgraph-checkpoint-redis</code></th>
+</tr>
+</thead>
+<tbody><tr>
+<td>Valkey support</td>
+<td>✅ Valkey 7+</td>
+<td>❌ Redis 8+ only</td>
+</tr>
+<tr>
+<td>Module requirements</td>
+<td>✅ None</td>
+<td>❌ RedisJSON + RediSearch</td>
+</tr>
+<tr>
+<td>Works on ElastiCache</td>
+<td>✅ Any tier</td>
+<td>❌ Requires Redis 8 + modules</td>
+</tr>
+<tr>
+<td>Works on Memorystore</td>
+<td>✅ Any tier</td>
+<td>❌ Requires Redis 8 + modules</td>
+</tr>
+<tr>
+<td>Checkpoint storage</td>
+<td>Plain JSON strings</td>
+<td>RedisJSON path operations</td>
+</tr>
+<tr>
+<td>Filtered listing</td>
+<td>SCAN + parse</td>
+<td>O(1) RediSearch index</td>
+</tr>
+<tr>
+<td>Best for</td>
+<td>Any Valkey/Redis deployment</td>
+<td>Redis 8+ with modules, millions of checkpoints</td>
+</tr>
+</tbody></table>
+<p>The trade-off: <code>list()</code> with filtering is SCAN-based. For typical deployments with hundreds of checkpoints per thread this is fast. If you have millions of checkpoints per thread and need sub-millisecond filtered listing, use <code>langgraph-checkpoint-redis</code> with Redis 8 instead.</p>
+<h2>Prerequisites</h2>
+<pre><code class="language-bash">npm install @betterdb/agent-cache iovalkey @langchain/langgraph @langchain/openai
+</code></pre>
+<h2>Step 1: Create the Checkpointer</h2>
+<pre><code class="language-typescript">import Valkey from &#39;iovalkey&#39;;
+import { AgentCache } from &#39;@betterdb/agent-cache&#39;;
+import { BetterDBSaver } from &#39;@betterdb/agent-cache/langgraph&#39;;
+
+const client = new Valkey({ host: &#39;localhost&#39;, port: 6379 });
+
+const cache = new AgentCache({
+  client,
+  tierDefaults: {
+    session: { ttl: 86400 }, // 24h session state
+  },
+});
+
+const checkpointer = new BetterDBSaver({ cache });
+</code></pre>
+<h2>Step 2: Build a Graph with Checkpointing</h2>
+<pre><code class="language-typescript">import { StateGraph, MessagesAnnotation } from &#39;@langchain/langgraph&#39;;
+import { ChatOpenAI } from &#39;@langchain/openai&#39;;
+import { ToolNode } from &#39;@langchain/langgraph/prebuilt&#39;;
+import { tool } from &#39;@langchain/core/tools&#39;;
+import { z } from &#39;zod&#39;;
+
+// Define a tool
+const getWeather = tool(
+  async ({ city }: { city: string }) =&gt; {
+    // Check tool cache first
+    const cached = await cache.tool.check(&#39;get_weather&#39;, { city });
+    if (cached.hit) return cached.response!;
+
+    const result = `${city}: 22°C, sunny`; // your real API call
+    await cache.tool.store(&#39;get_weather&#39;, { city }, result, { ttl: 300 });
+    return result;
+  },
+  {
+    name: &#39;get_weather&#39;,
+    description: &#39;Get current weather for a city&#39;,
+    schema: z.object({ city: z.string() }),
+  }
+);
+
+const model = new ChatOpenAI({ model: &#39;gpt-4o-mini&#39; }).bindTools([getWeather]);
+
+// Build the graph
+const graph = new StateGraph(MessagesAnnotation)
+  .addNode(&#39;agent&#39;, async (state) =&gt; {
+    // Check LLM cache before calling the model
+    const params = {
+      model: &#39;gpt-4o-mini&#39;,
+      messages: state.messages,
+      temperature: 0,
+    };
+
+    const cached = await cache.llm.check(params);
+    if (cached.hit) {
+      return { messages: [{ role: &#39;assistant&#39;, content: cached.response! }] };
+    }
+
+    const response = await model.invoke(state.messages);
+
+    await cache.llm.store(params, response.content as string);
+    return { messages: [response] };
+  })
+  .addNode(&#39;tools&#39;, new ToolNode([getWeather]))
+  .addEdge(&#39;__start__&#39;, &#39;agent&#39;)
+  .addConditionalEdges(&#39;agent&#39;, (state) =&gt; {
+    const last = state.messages.at(-1);
+    if (last &amp;&amp; &#39;tool_calls&#39; in last &amp;&amp; (last as any).tool_calls?.length) {
+      return &#39;tools&#39;;
+    }
+    return &#39;__end__&#39;;
+  })
+  .addEdge(&#39;tools&#39;, &#39;agent&#39;)
+  .compile({ checkpointer }); // attach BetterDBSaver here
+</code></pre>
+<h2>Step 3: Run the Graph Across Multiple Turns</h2>
+<pre><code class="language-typescript">const threadConfig = { configurable: { thread_id: &#39;user-42-thread-001&#39; } };
+
+// First message on this thread
+const r1 = await graph.invoke(
+  { messages: [{ role: &#39;user&#39;, content: &#39;What is the weather in Sofia?&#39; }] },
+  threadConfig
+);
+console.log(r1.messages.at(-1)?.content);
+// &quot;The weather in Sofia is 22°C and sunny.&quot;
+
+// Second message - graph resumes from the checkpoint in Valkey
+const r2 = await graph.invoke(
+  { messages: [{ role: &#39;user&#39;, content: &#39;And in Berlin?&#39; }] },
+  threadConfig // same thread_id = same conversation
+);
+console.log(r2.messages.at(-1)?.content);
+// &quot;The weather in Berlin is 18°C and cloudy. Earlier you asked about Sofia (22°C, sunny).&quot;
+</code></pre>
+<p>The graph has full conversation history because <code>BetterDBSaver</code> loaded the checkpoint from Valkey before the second invocation.</p>
+<h2>Checkpoint Key Format</h2>
+<p>Checkpoints are stored as plain JSON strings:</p>
+<pre><code>betterdb_ac:session:{threadId}:checkpoint:{checkpointId}
+betterdb_ac:session:{threadId}:__checkpoint_latest
+betterdb_ac:session:{threadId}:writes:{checkpointId}|{taskId}|{channel}|{idx}
+</code></pre>
+<p>They live under the session namespace so <code>destroyThread(threadId)</code> cleans up both session state and checkpoints in one call.</p>
+<h2>Combined: LLM + Tool + Session + Checkpointing</h2>
+<p>At full scale, all four capabilities work together from a single <code>AgentCache</code> instance:</p>
+<pre><code class="language-typescript">const cache = new AgentCache({
+  client,
+  costTable: { &#39;gpt-4o-mini&#39;: { inputPer1k: 0.00015, outputPer1k: 0.0006 } },
+  tierDefaults: {
+    llm:     { ttl: 3600  },
+    tool:    { ttl: 300   },
+    session: { ttl: 86400 },
+  },
+});
+
+// LangGraph checkpointing
+const checkpointer = new BetterDBSaver({ cache });
+const graph = buildGraph({ checkpointer, cache });
+
+// In your agent node: check cache.llm before calling the model
+// In your tool nodes: check cache.tool before calling external APIs
+// Session state: cache.session.set/get for per-thread context
+
+// When a conversation ends:
+await cache.session.destroyThread(threadId);
+
+// Monitor cost savings:
+const stats = await cache.stats();
+console.log(`Saved $${(stats.costSavedMicros / 1_000_000).toFixed(4)} so far`);
+</code></pre>
+<blockquote>
+<p><strong>Note:</strong> <code>active_sessions</code> in Prometheus metrics is approximate - it uses an in-memory counter that resets on process restart. For exact session counts, use <code>SCAN betterdb_ac:session:*</code> directly.</p>
+</blockquote>
+
+
+<div class="nav-prev-next">
+<a href="03-session-store.html" class="prev"><span class="label">← Previous</span><span class="title">03 - Session Store</span></a>
+<div></div>
+</div>
+</article>
+<button class="theme-toggle" onclick="toggleTheme()" aria-label="Toggle theme"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/></svg></button>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+<script>hljs.highlightAll();</script>
+<script>function toggleTheme(){var b=document.body,l=b.classList.toggle("light");localStorage.setItem("theme",l?"light":"dark")}(function(){if(localStorage.getItem("theme")==="light")document.body.classList.add("light")})()</script>
+</body>
+</html>

@@ -1,0 +1,339 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>@betterdb/agent-cache Cookbooks - Valkey for AI</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap"
+        rel="stylesheet">
+    <style>
+        *,
+        *::before,
+        *::after {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box
+        }
+
+        :root {
+            --bg: #000;
+            --card: rgba(255, 255, 255, .04);
+            --card-h: rgba(255, 255, 255, .07);
+            --brd: rgba(255, 255, 255, .08);
+            --t1: #f5f5f7;
+            --t2: rgba(245, 245, 247, .6);
+            --t3: rgba(245, 245, 247, .4);
+            --g1: #06b6d4;
+            --g2: #0ea5e9;
+            --radius: 16px;
+            --font: 'Inter', system-ui, sans-serif
+        }
+
+        html {
+            scroll-behavior: smooth;
+            -webkit-font-smoothing: antialiased
+        }
+
+        body {
+            font-family: var(--font);
+            background: var(--bg);
+            color: var(--t1);
+            line-height: 1.6;
+            min-height: 100vh
+        }
+
+        a {
+            color: inherit;
+            text-decoration: none
+        }
+
+        .nav {
+            position: sticky;
+            top: 0;
+            z-index: 100;
+            background: rgba(0, 0, 0, .8);
+            backdrop-filter: blur(20px);
+            border-bottom: 1px solid var(--brd);
+            padding: 16px 32px
+        }
+
+        .nav-inner {
+            max-width: 1200px;
+            margin: 0 auto;
+            display: flex;
+            align-items: center;
+            justify-content: space-between
+        }
+
+        .nav-logo {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-weight: 700;
+            font-size: 16px
+        }
+
+        .nav-logo img {
+            height: 24px
+        }
+
+        .accent {
+            color: #06b6d4
+        }
+
+        .nav-links {
+            display: flex;
+            gap: 24px;
+            align-items: center;
+            font-size: 14px;
+            color: var(--t2)
+        }
+
+        .nav-links a:hover {
+            color: var(--t1)
+        }
+
+        .container {
+            max-width: 900px;
+            margin: 0 auto;
+            padding: 40px 24px
+        }
+
+        .breadcrumb {
+            font-size: 13px;
+            color: var(--t3);
+            margin-bottom: 32px
+        }
+
+        .breadcrumb a {
+            color: var(--g1)
+        }
+
+        h1 {
+            font-size: 48px;
+            font-weight: 900;
+            letter-spacing: -.04em;
+            line-height: 1.1;
+            margin-bottom: 16px
+        }
+
+        h1 .gradient {
+            background: linear-gradient(135deg, var(--g1), var(--g2));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent
+        }
+
+        .subtitle {
+            font-size: 18px;
+            color: var(--t2);
+            max-width: 600px;
+            margin-bottom: 48px
+        }
+
+        .cookbook-list {
+            display: flex;
+            flex-direction: column;
+            gap: 16px
+        }
+
+        .cb-card {
+            display: flex;
+            gap: 20px;
+            background: var(--card);
+            border: 1px solid var(--brd);
+            border-radius: var(--radius);
+            padding: 24px;
+            transition: .3s;
+            cursor: pointer
+        }
+
+        .cb-card:hover {
+            background: var(--card-h);
+            border-color: rgba(255, 255, 255, .12);
+            transform: translateY(-2px)
+        }
+
+        .cb-num {
+            font-size: 32px;
+            font-weight: 900;
+            background: linear-gradient(135deg, var(--g1), var(--g2));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            min-width: 48px
+        }
+
+        .cb-content h3 {
+            font-size: 18px;
+            font-weight: 700;
+            margin-bottom: 4px
+        }
+
+        .cb-content p {
+            font-size: 14px;
+            color: var(--t2);
+            margin-bottom: 8px
+        }
+
+        .cb-tags {
+            display: flex;
+            gap: 6px
+        }
+
+        .cb-tags span {
+            padding: 3px 10px;
+            border-radius: 100px;
+            font-size: 11px;
+            font-weight: 600;
+            background: rgba(6, 182, 212, .12);
+            color: #67e8f9
+        }
+
+        .btn {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            padding: 12px 28px;
+            border-radius: 100px;
+            font-size: 14px;
+            font-weight: 600;
+            transition: .2s
+        }
+
+        .btn-secondary {
+            background: var(--card);
+            color: var(--t1);
+            border: 1px solid var(--brd)
+        }
+
+        .github-section {
+            margin-top: 40px;
+            text-align: center
+        }
+
+        @media(max-width:600px) {
+            h1 {
+                font-size: 32px
+            }
+
+            .cb-card {
+                flex-direction: column;
+                gap: 8px
+            }
+        }
+    </style>
+    <style>
+        body.light {
+            --bg: #fff;
+            --bg-elevated: #f5f5f7;
+            --card: rgba(0, 0, 0, .03);
+            --card-h: rgba(0, 0, 0, .06);
+            --brd: rgba(0, 0, 0, .08);
+            --t1: #1d1d1f;
+            --t2: rgba(29, 29, 31, .6);
+            --t3: rgba(29, 29, 31, .4)
+        }
+
+        .theme-toggle {
+            background: rgba(128, 128, 128, .12);
+            border: 1px solid rgba(128, 128, 128, .2);
+            border-radius: 100px;
+            width: 36px;
+            height: 36px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            padding: 0;
+            position: fixed;
+            top: 18px;
+            right: 24px;
+            z-index: 1001
+        }
+    </style>
+</head>
+
+<body>
+    <nav class="nav">
+        <div class="nav-inner">
+            <a href="/" class="nav-logo"><img src="/valkey-logo.svg" alt="Valkey"><span class="accent">for ai</span></a>
+            <div class="nav-links"><a href="/#use-cases">Use Cases</a><a href="/#frameworks">Frameworks</a><a
+                    href="https://github.com/meet-bhagdev/valkeyforai/tree/main" target="_blank">GitHub</a></div>
+        </div>
+    </nav>
+    <div class="container">
+        <div class="breadcrumb"><a href="/">Home</a> → <a href="/#frameworks">Frameworks</a> → <a
+                href="/cookbooks/betterdb/">BetterDB</a> → @betterdb/agent-cache</div>
+        <h1>@betterdb/<span class="gradient">agent-cache</span></h1>
+        <p class="subtitle">4 cookbooks for multi-tier AI agent caching. LLM responses, tool results, and session state
+            behind one connection - on vanilla Valkey 7+, no modules required.</p>
+        <div class="cookbook-list">
+            <a class="cb-card" href="01-getting-started.html">
+                <div class="cb-num">01</div>
+                <div class="cb-content">
+                    <h3>Getting Started</h3>
+                    <p>Install on vanilla Valkey 7+, create an AgentCache, and use all three tiers: LLM cache, tool
+                        cache, and session store.</p>
+                    <div class="cb-tags"><span>Beginner</span><span>~15 min</span><span>TypeScript</span></div>
+                </div>
+            </a>
+            <a class="cb-card" href="02-llm-and-tool-cache.html">
+                <div class="cb-num">02</div>
+                <div class="cb-content">
+                    <h3>LLM &amp; Tool Cache</h3>
+                    <p>Exact-match LLM response caching with cost tracking. Per-tool TTL policies. toolEffectiveness()
+                        recommendations for self-tuning caches.</p>
+                    <div class="cb-tags"><span>Intermediate</span><span>~20 min</span><span>TypeScript</span></div>
+                </div>
+            </a>
+            <a class="cb-card" href="03-session-store.html">
+                <div class="cb-num">03</div>
+                <div class="cb-content">
+                    <h3>Agent Session Store</h3>
+                    <p>Per-field TTL, sliding-window refresh, and atomic state updates for multi-step agents. Store
+                        intent, reasoning chains, and extracted entities.</p>
+                    <div class="cb-tags"><span>Intermediate</span><span>~20 min</span><span>TypeScript</span></div>
+                </div>
+            </a>
+            <a class="cb-card" href="04-langgraph.html">
+                <div class="cb-num">04</div>
+                <div class="cb-content">
+                    <h3>LangGraph Checkpointing</h3>
+                    <p>BetterDBSaver persists LangGraph graph state on vanilla Valkey 7+ - no Redis 8, no RedisJSON, no
+                        RediSearch. Combine with LLM and tool caching for full-stack agent optimization.</p>
+                    <div class="cb-tags"><span>Advanced</span><span>~25 min</span><span>TypeScript</span></div>
+                </div>
+            </a>
+        </div>
+        <div
+            style="margin-top:40px;background:linear-gradient(135deg,rgba(6,182,212,.12),rgba(14,165,233,.12));border:1px solid rgba(6,182,212,.25);border-radius:16px;padding:32px">
+            <h3 style="font-size:18px;font-weight:800;margin-bottom:8px">Package</h3>
+            <p style="font-size:14px;color:var(--t2);margin-bottom:16px">Multi-tier agent cache. No modules required.
+                Framework adapters for LangChain, Vercel AI SDK, and LangGraph.</p>
+            <div style="display:flex;gap:8px;flex-wrap:wrap">
+                <a href="https://www.npmjs.com/package/@betterdb/agent-cache" target="_blank" class="btn"
+                    style="background:linear-gradient(135deg,var(--g1),var(--g2));color:#fff;padding:10px 22px;font-size:13px">npm
+                    install @betterdb/agent-cache</a>
+            </div>
+        </div>
+        <div class="github-section">
+            <a href="https://www.npmjs.com/package/@betterdb/agent-cache" target="_blank" class="btn btn-secondary">📦
+                View on npm</a>
+            <a href="https://github.com/meet-bhagdev/valkeyforai/tree/main" target="_blank" class="btn btn-secondary"
+                style="margin-left:8px">📂 valkeyforai Repo</a>
+        </div>
+    </div>
+    <button class="theme-toggle" onclick="toggleTheme()" aria-label="Toggle theme"><svg width="18" height="18"
+            viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="12" cy="12" r="5" />
+            <line x1="12" y1="1" x2="12" y2="3" />
+            <line x1="12" y1="21" x2="12" y2="23" />
+            <line x1="4.22" y1="4.22" x2="5.64" y2="5.64" />
+            <line x1="18.36" y1="18.36" x2="19.78" y2="19.78" />
+            <line x1="1" y1="12" x2="3" y2="12" />
+            <line x1="21" y1="12" x2="23" y2="12" />
+        </svg></button>
+    <script>function toggleTheme() { var b = document.body, l = b.classList.toggle("light"); localStorage.setItem("theme", l ? "light" : "dark") } (function () { if (localStorage.getItem("theme") === "light") document.body.classList.add("light") })()</script>
+</body>
+
+</html>

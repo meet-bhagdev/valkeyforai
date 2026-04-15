@@ -1,0 +1,77 @@
+{
+  "trackName": "@betterdb/agent-cache",
+  "cookbooks": [
+    {
+      "num": "01",
+      "source": "01-getting-started.md",
+      "output": "01-getting-started.html",
+      "title": "Getting Started with @betterdb/agent-cache",
+      "h1": "Getting Started with <span class=\"gradient\">@betterdb/agent-cache</span>",
+      "lead": "Three cache tiers - LLM responses, tool results, and session state - behind one connection. Works on vanilla Valkey 7+ with no modules.",
+      "breadcrumb": "Getting Started",
+      "difficulty": "Beginner",
+      "time": "15 min",
+      "language": "TypeScript",
+      "next": {
+        "file": "02-llm-and-tool-cache.html",
+        "title": "02 - LLM & Tool Cache"
+      }
+    },
+    {
+      "num": "02",
+      "source": "02-llm-and-tool-cache.md",
+      "output": "02-llm-and-tool-cache.html",
+      "title": "LLM & Tool Cache",
+      "h1": "LLM &amp; Tool <span class=\"gradient\">Cache</span>",
+      "lead": "Cache exact LLM responses and tool call results. Track cost savings per model. Use toolEffectiveness() to tune per-tool TTLs automatically.",
+      "breadcrumb": "LLM & Tool Cache",
+      "difficulty": "Intermediate",
+      "time": "20 min",
+      "language": "TypeScript",
+      "prev": {
+        "file": "01-getting-started.html",
+        "title": "01 - Getting Started"
+      },
+      "next": {
+        "file": "03-session-store.html",
+        "title": "03 - Session Store"
+      }
+    },
+    {
+      "num": "03",
+      "source": "03-session-store.md",
+      "output": "03-session-store.html",
+      "title": "Agent Session Store",
+      "h1": "Agent <span class=\"gradient\">Session Store</span>",
+      "lead": "Persist per-agent state with per-field TTL and sliding-window refresh. Store intent, intermediate results, and reasoning chains across invocations.",
+      "breadcrumb": "Session Store",
+      "difficulty": "Intermediate",
+      "time": "20 min",
+      "language": "TypeScript",
+      "prev": {
+        "file": "02-llm-and-tool-cache.html",
+        "title": "02 - LLM & Tool Cache"
+      },
+      "next": {
+        "file": "04-langgraph.html",
+        "title": "04 - LangGraph Checkpointing"
+      }
+    },
+    {
+      "num": "04",
+      "source": "04-langgraph.md",
+      "output": "04-langgraph.html",
+      "title": "LangGraph Checkpointing",
+      "h1": "LangGraph <span class=\"gradient\">Checkpointing</span>",
+      "lead": "Persist LangGraph agent state on vanilla Valkey 7+ with BetterDBSaver - no Redis 8, no RedisJSON, no RediSearch modules required.",
+      "breadcrumb": "LangGraph Checkpointing",
+      "difficulty": "Advanced",
+      "time": "25 min",
+      "language": "TypeScript",
+      "prev": {
+        "file": "03-session-store.html",
+        "title": "03 - Session Store"
+      }
+    }
+  ]
+}
