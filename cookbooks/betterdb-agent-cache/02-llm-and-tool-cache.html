@@ -74,12 +74,10 @@ import OpenAI from &#39;openai&#39;;
 const client = new Valkey({ host: &#39;localhost&#39;, port: 6379 });
 const openai = new OpenAI();
 
+// costTable is optional — 1,900+ models covered by default (see &quot;Default Cost Table&quot; below)
 const cache = new AgentCache({
   client,
   tierDefaults: { llm: { ttl: 3600 } },
-  costTable: {
-    &#39;gpt-4o-mini&#39;: { inputPer1k: 0.00015, outputPer1k: 0.0006 },
-  },
 });
 
 async function cachedCompletion(params: {
@@ -214,6 +212,51 @@ console.log(effectiveness);
 <td>Results change too fast or are rarely repeated - consider disabling cache for this tool</td>
 </tr>
 </tbody></table>
+<hr>
+<h2>Default Cost Table</h2>
+<p>Starting with v0.4.0, <code>@betterdb/agent-cache</code> ships a bundled cost table sourced from <a href="https://github.com/BerriAI/litellm/blob/main/model_prices_and_context_window.json">LiteLLM&#39;s model pricing data</a> and refreshed on every release. Cost tracking works out of the box for 1,900+ models — no <code>costTable</code> configuration required.</p>
+<pre><code class="language-typescript">// No costTable needed — GPT-4o, Claude, Gemini, and many others are covered
+const cache = new AgentCache({
+  client,
+  tierDefaults: { llm: { ttl: 3600 } },
+});
+</code></pre>
+<p>Pass <code>tokens</code> when storing and cost savings are tracked automatically:</p>
+<pre><code class="language-typescript">await cache.llm.store(params, response, {
+  tokens: { input: usage.prompt_tokens, output: usage.completion_tokens },
+});
+
+const stats = await cache.stats();
+console.log(`Cost saved: $${(stats.costSavedMicros / 1_000_000).toFixed(4)}`);
+</code></pre>
+<h3>Overriding Specific Models</h3>
+<p>User-supplied <code>costTable</code> entries merge on top of the defaults. You only need to supply entries for models not in the bundled table or when you want to override a price:</p>
+<pre><code class="language-typescript">const cache = new AgentCache({
+  client,
+  costTable: {
+    &#39;my-fine-tuned-gpt4o&#39;: { inputPer1k: 0.005, outputPer1k: 0.015 },
+  },
+});
+</code></pre>
+<h3>Inspecting the Bundled Table</h3>
+<pre><code class="language-typescript">import { DEFAULT_COST_TABLE } from &#39;@betterdb/agent-cache&#39;;
+
+console.log(DEFAULT_COST_TABLE[&#39;gpt-4o-mini&#39;]);
+// { inputPer1k: 0.00015, outputPer1k: 0.0006 }
+
+console.log(Object.keys(DEFAULT_COST_TABLE).length);
+// 1900+
+</code></pre>
+<h3>Disabling the Default Table</h3>
+<p>Set <code>useDefaultCostTable: false</code> to opt out entirely and supply your own table:</p>
+<pre><code class="language-typescript">const cache = new AgentCache({
+  client,
+  useDefaultCostTable: false,
+  costTable: {
+    &#39;gpt-4o&#39;: { inputPer1k: 0.0025, outputPer1k: 0.010 },
+  },
+});
+</code></pre>
 
 
 <div class="nav-prev-next">
