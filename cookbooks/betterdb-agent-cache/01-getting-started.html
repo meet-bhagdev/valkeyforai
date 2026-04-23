@@ -65,10 +65,7 @@ const cache = new AgentCache({
     tool:    { ttl: 300   }, // Tool results: 5 minutes
     session: { ttl: 1800  }, // Session state: 30 minutes (sliding)
   },
-  costTable: {
-    &#39;gpt-4o&#39;:      { inputPer1k: 0.0025, outputPer1k: 0.010 },
-    &#39;gpt-4o-mini&#39;: { inputPer1k: 0.00015, outputPer1k: 0.0006 },
-  },
+  // costTable is optional — 100+ models are covered by default
 });
 </code></pre>
 <p>No <code>initialize()</code> call needed - all three tiers use plain Valkey commands (SET, GET, HINCRBY) with no index creation.</p>
@@ -152,7 +149,7 @@ const state = await cache.session.getAll(threadId);
 </tr>
 <tr>
 <td>Stats hash</td>
-<td><code>betterdb_ac:stats</code></td>
+<td><code>betterdb_ac:__stats</code></td>
 </tr>
 </tbody></table>
 <p>To use a separate namespace per environment or application:</p>

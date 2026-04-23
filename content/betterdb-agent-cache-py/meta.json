@@ -1,17 +1,17 @@
 {
-  "trackName": "@betterdb/agent-cache",
+  "trackName": "betterdb-agent-cache (Python)",
   "cookbooks": [
     {
       "num": "01",
       "source": "01-getting-started.md",
       "output": "01-getting-started.html",
-      "title": "Getting Started with @betterdb/agent-cache",
-      "h1": "Getting Started with <span class=\"gradient\">@betterdb/agent-cache</span>",
+      "title": "Getting Started with betterdb-agent-cache",
+      "h1": "Getting Started with <span class=\"gradient\">betterdb-agent-cache</span>",
       "lead": "Three cache tiers - LLM responses, tool results, and session state - behind one connection. Works on vanilla Valkey 7+ with no modules.",
       "breadcrumb": "Getting Started",
       "difficulty": "Beginner",
       "time": "15 min",
-      "language": "TypeScript",
+      "language": "Python",
       "next": {
         "file": "02-llm-and-tool-cache.html",
         "title": "02 - LLM & Tool Cache"
@@ -23,11 +23,11 @@
       "output": "02-llm-and-tool-cache.html",
       "title": "LLM & Tool Cache",
       "h1": "LLM &amp; Tool <span class=\"gradient\">Cache</span>",
-      "lead": "Cache exact LLM responses and tool call results. Track cost savings per model. Use toolEffectiveness() to tune per-tool TTLs automatically.",
+      "lead": "Cache exact LLM responses and tool call results. Track cost savings per model. Use tool_effectiveness() to tune per-tool TTLs automatically.",
       "breadcrumb": "LLM & Tool Cache",
       "difficulty": "Intermediate",
       "time": "20 min",
-      "language": "TypeScript",
+      "language": "Python",
       "prev": {
         "file": "01-getting-started.html",
         "title": "01 - Getting Started"
@@ -47,50 +47,50 @@
       "breadcrumb": "Session Store",
       "difficulty": "Intermediate",
       "time": "20 min",
-      "language": "TypeScript",
+      "language": "Python",
       "prev": {
         "file": "02-llm-and-tool-cache.html",
         "title": "02 - LLM & Tool Cache"
       },
       "next": {
-        "file": "04-langgraph.html",
-        "title": "04 - LangGraph Checkpointing"
+        "file": "04-provider-adapters.html",
+        "title": "04 - Provider Adapters"
       }
     },
     {
       "num": "04",
-      "source": "04-langgraph.md",
-      "output": "04-langgraph.html",
+      "source": "04-provider-adapters.md",
+      "output": "04-provider-adapters.html",
+      "title": "Provider Adapters",
+      "h1": "Provider <span class=\"gradient\">Adapters</span>",
+      "lead": "Drop-in caching for OpenAI Chat Completions, Responses API, Anthropic Messages, and LlamaIndex. One prepare_params() call translates provider params into the canonical cache key.",
+      "breadcrumb": "Provider Adapters",
+      "difficulty": "Intermediate",
+      "time": "25 min",
+      "language": "Python",
+      "prev": {
+        "file": "03-session-store.html",
+        "title": "03 - Session Store"
+      },
+      "next": {
+        "file": "05-langgraph.html",
+        "title": "05 - LangGraph Checkpointing"
+      }
+    },
+    {
+      "num": "05",
+      "source": "05-langgraph.md",
+      "output": "05-langgraph.html",
       "title": "LangGraph Checkpointing",
       "h1": "LangGraph <span class=\"gradient\">Checkpointing</span>",
       "lead": "Persist LangGraph agent state on vanilla Valkey 7+ with BetterDBSaver - no Redis 8, no RedisJSON, no RediSearch modules required.",
       "breadcrumb": "LangGraph Checkpointing",
       "difficulty": "Advanced",
       "time": "25 min",
-      "language": "TypeScript",
+      "language": "Python",
       "prev": {
-        "file": "03-session-store.html",
-        "title": "03 - Session Store"
-      },
-      "next": {
-        "file": "05-provider-adapters.html",
-        "title": "05 - Provider Adapters"
-      }
-    },
-    {
-      "num": "05",
-      "source": "05-provider-adapters.md",
-      "output": "05-provider-adapters.html",
-      "title": "Provider Adapters",
-      "h1": "Provider <span class=\"gradient\">Adapters</span>",
-      "lead": "Drop-in caching for OpenAI Chat Completions, Responses API, Anthropic Messages, and LlamaIndex. One prepareParams() call translates provider params into the canonical cache key.",
-      "breadcrumb": "Provider Adapters",
-      "difficulty": "Intermediate",
-      "time": "25 min",
-      "language": "TypeScript",
-      "prev": {
-        "file": "04-langgraph.html",
-        "title": "04 - LangGraph Checkpointing"
+        "file": "04-provider-adapters.html",
+        "title": "04 - Provider Adapters"
       }
     }
   ]
