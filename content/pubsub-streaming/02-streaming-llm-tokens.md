@@ -12,6 +12,11 @@ When streaming from an LLM (OpenAI, Anthropic, etc.), tokens arrive one at a tim
 ## Step 1: Token Publisher (Server Side)
 
 ```python
+import os
+from dotenv import load_dotenv
+
+load_dotenv()
+
 import valkey
 import json
 import time

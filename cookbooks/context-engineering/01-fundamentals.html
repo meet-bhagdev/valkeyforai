@@ -81,12 +81,21 @@ pre code.hljs{background:transparent!important;padding:0}
 <h2>Prerequisites</h2>
 <ul>
 <li>Valkey with the <strong>valkey-search</strong> module (or ElastiCache for Valkey 8.2+)</li>
-<li>Python 3.9+ with <code>valkey</code></li>
+<li>Python 3.12+ with <code>valkey</code></li>
 </ul>
-<pre><code class="language-bash">pip install valkey
+<h2>Step 1: Start Valkey</h2>
+<pre><code class="language-bash">docker run -d --name valkey -p 6379:6379 valkey/valkey-bundle:9-alpine
 </code></pre>
-<h2>Step 1: Store System Instructions</h2>
-<pre><code class="language-python">import valkey
+<h2>Step 2: Install Dependencies</h2>
+<pre><code class="language-bash">uv pip install valkey python-dotenv
+</code></pre>
+<h2>Step 3: Store System Instructions</h2>
+<pre><code class="language-python">import os
+from dotenv import load_dotenv
+
+load_dotenv()
+
+import valkey
 import json
 
 client = valkey.Valkey(host=&quot;localhost&quot;, port=6379, decode_responses=True)
@@ -100,7 +109,7 @@ client.hset(&quot;agent:config:support_bot&quot;, mapping={
 })
 print(&quot;System instructions stored&quot;)
 </code></pre>
-<h2>Step 2: Manage Conversation History</h2>
+<h2>Step 4: Manage Conversation History</h2>
 <pre><code class="language-python">import time
 
 def add_message(session_id: str, role: str, content: str):
@@ -126,7 +135,7 @@ history = get_history(&quot;sess_001&quot;)
 for msg in history:
     print(f&quot;  {msg[&#39;role&#39;]}: {msg[&#39;content&#39;][:60]}...&quot;)
 </code></pre>
-<h2>Step 3: Store Tool Outputs</h2>
+<h2>Step 5: Store Tool Outputs</h2>
 <pre><code class="language-python">def store_tool_output(session_id: str, step: int, tool_name: str, result: dict):
     &quot;&quot;&quot;Store the output of a tool call for context assembly.&quot;&quot;&quot;
     key = f&quot;tool:{session_id}:step_{step}&quot;
@@ -156,7 +165,7 @@ store_tool_output(&quot;sess_001&quot;, 1, &quot;check_order&quot;, {
     &quot;date&quot;: &quot;2025-03-15&quot;,
 })
 </code></pre>
-<h2>Step 4: Long-term User Memory</h2>
+<h2>Step 6: Long-term User Memory</h2>
 <pre><code class="language-python">def remember(user_id: str, key: str, value: str):
     &quot;&quot;&quot;Store a long-term memory about a user.&quot;&quot;&quot;
     client.hset(f&quot;memory:{user_id}&quot;, key, value)
@@ -195,6 +204,7 @@ print(f&quot;Alice&#39;s memories: {memories}&quot;)
 <button class="theme-toggle" onclick="toggleTheme()" aria-label="Toggle theme"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/></svg></button>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
 <script>hljs.highlightAll();</script>
+<script type="module">import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs';mermaid.initialize({startOnLoad:true,theme:document.body.classList.contains('light')?'default':'dark'});</script>
 <script>function toggleTheme(){var b=document.body,l=b.classList.toggle("light");localStorage.setItem("theme",l?"light":"dark")}(function(){if(localStorage.getItem("theme")==="light")document.body.classList.add("light")})()</script>
 </body>
 </html>

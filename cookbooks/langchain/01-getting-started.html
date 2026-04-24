@@ -40,14 +40,14 @@ pre code.hljs{background:transparent!important;padding:0}
 </ul>
 <h2>Step 1: Start Valkey</h2>
 <p>Docker installed and Python 3.10+ required.</p>
-<pre><code class="language-bash">docker run -d --name valkey -p 6379:6379 valkey/valkey-bundle:latest
+<pre><code class="language-bash">docker run -d --name valkey -p 6379:6379 valkey/valkey-bundle:9-alpine
 </code></pre>
 <p>The <code>valkey-bundle</code> image includes JSON and Search modules needed for ValkeyStore. Verify:</p>
 <pre><code class="language-bash">docker exec valkey valkey-cli PING
 # PONG
 </code></pre>
 <h2>Step 2: Install the Package</h2>
-<pre><code class="language-bash">pip install &#39;langgraph-checkpoint-aws[valkey]&#39; langchain-aws
+<pre><code class="language-bash">uv pip install &#39;langgraph-checkpoint-aws[valkey]&#39; langchain-aws python-dotenv
 </code></pre>
 <p>This installs <code>ValkeySaver</code>, <code>ValkeyStore</code>, <code>ValkeyCache</code>, and the Bedrock integrations.</p>
 <h2>Step 3: Understand the Data Model</h2>
@@ -64,7 +64,12 @@ pre code.hljs{background:transparent!important;padding:0}
 </code></pre>
 <p><strong>Under the Hood:</strong> <code>ValkeySaver</code> uses Valkey JSON (<code>JSON.SET</code>) for structured storage and <code>FT.CREATE</code>/<code>FT.SEARCH</code> for indexing checkpoints by thread ID and namespace. TTL is applied via <code>EXPIRE</code>.</p>
 <h2>Step 4: Persist a LangGraph Agent</h2>
-<pre><code class="language-python">from langgraph.graph import StateGraph, MessagesState
+<pre><code class="language-python">import os
+from dotenv import load_dotenv
+
+load_dotenv()
+
+from langgraph.graph import StateGraph, MessagesState
 from langgraph_checkpoint_aws import ValkeySaver
 from langchain_aws import ChatBedrockConverse
 from langchain_core.messages import HumanMessage
@@ -160,6 +165,7 @@ with ValkeySaver.from_conn_string(&quot;valkey://localhost:6379&quot;) as checkp
 <button class="theme-toggle" onclick="toggleTheme()" aria-label="Toggle theme"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/></svg></button>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
 <script>hljs.highlightAll();</script>
+<script type="module">import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs';mermaid.initialize({startOnLoad:true,theme:document.body.classList.contains('light')?'default':'dark'});</script>
 <script>function toggleTheme(){var b=document.body,l=b.classList.toggle("light");localStorage.setItem("theme",l?"light":"dark")}(function(){if(localStorage.getItem("theme")==="light")document.body.classList.add("light")})()</script>
 </body>
 </html>

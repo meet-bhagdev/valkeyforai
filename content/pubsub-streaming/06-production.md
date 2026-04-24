@@ -1,6 +1,11 @@
 ## Pattern 1: Backpressure with MAXLEN  
 
 ```python
+import os
+from dotenv import load_dotenv
+
+load_dotenv()
+
 import valkey, time
 client = valkey.Valkey(host="localhost", port=6379, decode_responses=True)
 

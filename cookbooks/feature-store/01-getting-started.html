@@ -40,17 +40,17 @@ pre code.hljs{background:transparent!important;padding:0}
 <h2>Prerequisites</h2>
 <ul>
 <li>Docker installed (or a running Valkey instance)</li>
-<li>Python 3.9+</li>
+<li>Python 3.12+</li>
 </ul>
 <h2>Step 1: Start Valkey</h2>
-<pre><code class="language-bash">docker run -d --name valkey -p 6379:6379 valkey/valkey:latest
+<pre><code class="language-bash">docker run -d --name valkey -p 6379:6379 valkey/valkey-bundle:9-alpine
 </code></pre>
 <p>Verify it&#39;s running:</p>
 <pre><code class="language-bash">docker exec valkey valkey-cli ping
 # PONG
 </code></pre>
 <h2>Step 2: Install Dependencies</h2>
-<pre><code class="language-bash">pip install valkey
+<pre><code class="language-bash">uv pip install valkey python-dotenv
 </code></pre>
 <p>The <code>valkey</code> package is the official Valkey Python client - no special drivers needed.</p>
 <h2>Step 3: Understand the Data Model</h2>
@@ -68,7 +68,12 @@ fs:v1:user_profile:user_123 → {
 <p><strong>How it works:</strong> Valkey Hashes map perfectly to feature vectors. Each field is a feature, each key is an entity. One <code>HGETALL</code> returns the full feature vector. One <code>HMGET</code> returns selective features. Both complete in ~0.1ms.</p>
 <h2>Step 4: Write Features with Raw Valkey Commands</h2>
 <p>Starting with raw Valkey commands to see what&#39;s happening under the hood:</p>
-<pre><code class="language-python">import valkey
+<pre><code class="language-python">import os
+from dotenv import load_dotenv
+
+load_dotenv()
+
+import valkey
 import time
 
 client = valkey.Valkey(host=&quot;localhost&quot;, port=6379, decode_responses=True)
@@ -190,6 +195,7 @@ print(features)
 <button class="theme-toggle" onclick="toggleTheme()" aria-label="Toggle theme"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/></svg></button>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
 <script>hljs.highlightAll();</script>
+<script type="module">import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs';mermaid.initialize({startOnLoad:true,theme:document.body.classList.contains('light')?'default':'dark'});</script>
 <script>function toggleTheme(){var b=document.body,l=b.classList.toggle("light");localStorage.setItem("theme",l?"light":"dark")}(function(){if(localStorage.getItem("theme")==="light")document.body.classList.add("light")})()</script>
 </body>
 </html>
