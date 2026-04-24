@@ -5,6 +5,11 @@ With plain XREAD, every consumer gets every message. With consumer groups, messa
 ## Step 1: Create a Group
 
 ```python
+import os
+from dotenv import load_dotenv
+
+load_dotenv()
+
 import valkey
 client = valkey.Valkey(host="localhost", port=6379, decode_responses=True)
 

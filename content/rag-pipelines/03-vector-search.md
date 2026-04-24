@@ -110,6 +110,11 @@ FT.SEARCH idx:docs
 ## Python Implementation
 
 ```python
+import os
+from dotenv import load_dotenv
+
+load_dotenv()
+
 from valkey.commands.search.query import Query
 
 def hybrid_search(query_text, category=None, date_range=None, k=5):

@@ -1,12 +1,12 @@
 ## Prerequisites
 
   * Docker installed (or a running Valkey instance)
-  * Python 3.9+
+  * Python 3.12+
 
 ## Step 1: Start Valkey
 
 ```bash
-docker run -d --name valkey -p 6379:6379 valkey/valkey:latest
+docker run -d --name valkey -p 6379:6379 valkey/valkey-bundle:9-alpine
 ```
 
 Verify it's running:
@@ -19,7 +19,7 @@ docker exec valkey valkey-cli ping
 ## Step 2: Install Dependencies
 
 ```bash
-pip install valkey
+uv pip install valkey python-dotenv
 ```
 
 That's it - no special libraries needed. The `valkey` package is the official Valkey Python client.
@@ -27,6 +27,11 @@ That's it - no special libraries needed. The `valkey` package is the official Va
 ## Step 3: Your First Rate Limiter
 
 ```python
+import os
+from dotenv import load_dotenv
+
+load_dotenv()
+
 import valkey
 import time
 

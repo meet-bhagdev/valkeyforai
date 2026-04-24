@@ -26,19 +26,19 @@ Distribute data across multiple nodes for horizontal scaling:
 version: '3.8'
 services:
   valkey-1:
-    image: valkey/valkey-bundle:latest
+    image: valkey/valkey-bundle:9-alpine
     command: valkey-server --cluster-enabled yes --cluster-node-timeout 5000
     ports:
       - "7001:6379"
 
   valkey-2:
-    image: valkey/valkey-bundle:latest
+    image: valkey/valkey-bundle:9-alpine
     command: valkey-server --cluster-enabled yes --cluster-node-timeout 5000
     ports:
       - "7002:6379"
 
   valkey-3:
-    image: valkey/valkey-bundle:latest
+    image: valkey/valkey-bundle:9-alpine
     command: valkey-server --cluster-enabled yes --cluster-node-timeout 5000
     ports:
       - "7003:6379"
@@ -120,6 +120,11 @@ client = valkey.Valkey(
 )
 
 # For cluster mode
+import os
+from dotenv import load_dotenv
+
+load_dotenv()
+
 from valkey.cluster import ValkeyCluster
 
 cluster = ValkeyCluster(

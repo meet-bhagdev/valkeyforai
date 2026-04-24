@@ -30,28 +30,47 @@ pre code.hljs{background:transparent!important;padding:0}
 <p class="lead">Build a semantic cache that stores LLM responses and returns cached answers for semantically similar prompts - cutting costs by 60%+ and latency from seconds to milliseconds.</p>
 
 <h2>How Semantic Caching Works</h2>
-<pre><code class="language-python"># Flow:
-# 1. User sends prompt
-# 2. Embed the prompt → vector
-# 3. FT.SEARCH: find similar cached prompts (KNN)
-# 4. If similarity score &lt; threshold → CACHE HIT → return cached response
-# 5. Else → CACHE MISS → call LLM → cache the prompt+response → return
-#
-#  User Prompt → Embed → FT.SEARCH KNN → Hit? → Return cached
-#                                        → Miss? → Call LLM → HSET → Return
+<p>Gist</p>
+<pre><code>User Prompt → Embed → FT.SEARCH KNN → Hit?  → Return cached response (~1ms)
+                                      Miss? → Call LLM (~1-3s) → HSET in Valkey → Return
 </code></pre>
+<p>Diagram</p>
+<pre class="mermaid">flowchart TD
+    A[&quot;User Prompt&quot;] --&gt; B[&quot;Embed → Vector&quot;]
+    B --&gt; C[&quot;FT.SEARCH KNN\n(find similar cached prompts)&quot;]
+    C --&gt; D{&quot;score &lt; threshold?&quot;}
+    D -- &quot;✅ Cache Hit&quot; --&gt; E[&quot;Return cached response\n⚡ ~1ms&quot;]
+    D -- &quot;❌ Cache Miss&quot; --&gt; F[&quot;Call LLM\n🕐 ~1-3s&quot;]
+    F --&gt; G[&quot;HSET prompt + response\n+ embedding in Valkey&quot;]
+    G --&gt; H[&quot;Return LLM response&quot;]
+</pre>
 <blockquote>
 <p><strong>Why semantic, not exact?</strong> &quot;What is Valkey?&quot; and &quot;Can you explain what Valkey is?&quot; are different strings but mean the same thing. Exact-match caching misses these. Semantic caching uses vector similarity to match by <em>meaning</em>, dramatically increasing hit rates.</p>
 </blockquote>
 <h2>Prerequisites</h2>
 <ul>
-<li>Valkey with the <strong>valkey-search</strong> module loaded (or ElastiCache for Valkey 8.2+)</li>
-<li>Python 3.9+ with <code>valkey</code>, <code>openai</code>, <code>numpy</code></li>
+<li>Valkey with the <strong>valkey-search</strong> module loaded (or ElastiCache for Valkey 8.2+ or Memorystore for Valkey 8+)</li>
+<li>Python 3.12+ with <code>valkey</code>, <code>openai</code>, <code>numpy</code> and <code>python-dotenv</code></li>
 </ul>
-<h2>Step 1: Setup</h2>
-<pre><code class="language-bash">pip install valkey openai numpy
+<h2>Step 1: Start Valkey</h2>
+<p>1.1 - If you haven&#39;t already started a <code>Valkey</code> server with the <code>valkey-search</code> module you can start with the <code>valkey-bundle</code> container.</p>
+<pre><code class="language-bash">docker run -d --name valkey -p 6379:6379 valkey/valkey-bundle:9-alpine
 </code></pre>
-<pre><code class="language-python">import valkey
+<h2>Step 2: Setup</h2>
+<p>2.1 - Create a <code>.env</code> file with the following environment variables:</p>
+<pre><code class="language-bash">OPENAI_API_KEY=&lt;your_openai_api_key&gt;
+OPENAI_MODEL=gpt-5.1
+</code></pre>
+<p>2.2 - Install dependencies</p>
+<pre><code class="language-bash">uv pip install valkey openai numpy python-dotenv
+</code></pre>
+<p>2.3 - Connect to Valkey and OpenAI</p>
+<pre><code class="language-python">import os
+from dotenv import load_dotenv
+
+load_dotenv()
+
+import valkey
 import numpy as np
 import json
 import hashlib
@@ -66,7 +85,7 @@ EMBEDDING_DIM = 1536
 SIMILARITY_THRESHOLD = 0.15  # COSINE distance: 0=identical, 2=opposite
 CACHE_TTL = 3600  # 1 hour
 </code></pre>
-<h2>Step 2: Create the Cache Index</h2>
+<h2>Step 3: Create the Cache Index</h2>
 <pre><code class="language-python">def create_cache_index():
     &quot;&quot;&quot;Create a vector index for the semantic cache.&quot;&quot;&quot;
     try:
@@ -86,7 +105,7 @@ CACHE_TTL = 3600  # 1 hour
 
 create_cache_index()
 </code></pre>
-<h2>Step 3: Embedding Helper</h2>
+<h2>Step 4: Embedding Helper</h2>
 <pre><code class="language-python">def get_embedding(text: str) -&gt; bytes:
     &quot;&quot;&quot;Embed text using OpenAI and return as FLOAT32 bytes.&quot;&quot;&quot;
     response = openai_client.embeddings.create(
@@ -96,7 +115,7 @@ create_cache_index()
     vec = response.data[0].embedding
     return np.array(vec, dtype=np.float32).tobytes()
 </code></pre>
-<h2>Step 4: The Semantic Cache</h2>
+<h2>Step 5: The Semantic Cache</h2>
 <pre><code class="language-python">def semantic_cache_lookup(prompt: str) -&gt; dict:
     &quot;&quot;&quot;Check if a semantically similar prompt is cached.&quot;&quot;&quot;
     query_vec = get_embedding(prompt)
@@ -177,7 +196,7 @@ def ask_with_cache(prompt: str) -&gt; dict:
         &quot;latency_ms&quot;: round(elapsed, 1),
     }
 </code></pre>
-<h2>Step 5: Test It</h2>
+<h2>Step 6: Test It</h2>
 <pre><code class="language-python"># First call - cache MISS (calls LLM)
 result1 = ask_with_cache(&quot;What is Valkey?&quot;)
 print(f&quot;Source: {result1[&#39;source&#39;]}, Latency: {result1[&#39;latency_ms&#39;]}ms&quot;)
@@ -241,6 +260,7 @@ print(f&quot;Source: {result3[&#39;source&#39;]}, Latency: {result3[&#39;latency
 <button class="theme-toggle" onclick="toggleTheme()" aria-label="Toggle theme"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/></svg></button>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
 <script>hljs.highlightAll();</script>
+<script type="module">import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs';mermaid.initialize({startOnLoad:true,theme:document.body.classList.contains('light')?'default':'dark'});</script>
 <script>function toggleTheme(){var b=document.body,l=b.classList.toggle("light");localStorage.setItem("theme",l?"light":"dark")}(function(){if(localStorage.getItem("theme")==="light")document.body.classList.add("light")})()</script>
 </body>
 </html>

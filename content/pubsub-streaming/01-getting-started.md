@@ -11,23 +11,28 @@ Valkey Pub/Sub is a fire-and-forget messaging system. Publishers send messages t
 ## Prerequisites
 
   * Docker installed (or a running Valkey instance)
-  * Python 3.9+
+  * Python 3.12+
 
 ## Step 1: Start Valkey
 
 ```bash
-docker run -d --name valkey -p 6379:6379 valkey/valkey:latest
+docker run -d --name valkey -p 6379:6379 valkey/valkey-bundle:9-alpine
 ```
 
 ## Step 2: Install Dependencies
 
 ```bash
-pip install valkey
+uv pip install valkey python-dotenv
 ```
 
 ## Step 3: Create a Publisher
 
 ```python
+import os
+from dotenv import load_dotenv
+
+load_dotenv()
+
 import valkey
 import time
 import json

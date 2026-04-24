@@ -7,21 +7,25 @@
 ## Step 1: Install
 
 ```bash
-pip install mem0ai
+uv pip install mem0ai python-dotenv
 ```
 
 The `valkey` Python client is included as a core dependency - no separate install needed.
 
 ## Step 2: Start Valkey with Search Module
 
-```python
-# Valkey with valkey-search module loaded
-valkey-server --loadmodule /usr/lib/valkey/libsearch.so
+```bash
+docker run -d --name valkey -p 6379:6379 valkey/valkey-bundle:9-alpine
 ```
 
 ## Step 3: Configure Mem0 with Valkey
 
 ```python
+import os
+from dotenv import load_dotenv
+
+load_dotenv()
+
 from mem0 import Memory
 
 config = {

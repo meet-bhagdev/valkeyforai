@@ -17,7 +17,7 @@ Unlike `langgraph-checkpoint-redis` or similar packages, it requires **no Valkey
 No special image needed - the standard Valkey image works:
 
 ```bash
-docker run -d --name valkey -p 6379:6379 valkey/valkey:latest
+docker run -d --name valkey -p 6379:6379 valkey/valkey-bundle:9-alpine
 ```
 
 ```bash

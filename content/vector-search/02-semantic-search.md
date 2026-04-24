@@ -11,7 +11,7 @@
 ## Step 1: Setup
 
 ```bash
-pip install valkey openai numpy
+uv pip install valkey openai numpy python-dotenv
 
 
 import valkey

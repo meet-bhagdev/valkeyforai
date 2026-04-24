@@ -10,12 +10,12 @@ LLMs are stateless - every API call starts from scratch. Conversation memory bri
 ## Prerequisites
 
   * Docker installed (or a running Valkey instance)
-  * Python 3.9+
+  * Python 3.12+
 
 ## Step 1: Start Valkey
 
 ```bash
-docker run -d --name valkey -p 6379:6379 valkey/valkey:latest
+docker run -d --name valkey -p 6379:6379 valkey/valkey-bundle:9-alpine
 ```
 
 Verify it's running:
@@ -28,7 +28,7 @@ docker exec valkey valkey-cli PING
 ## Step 2: Install GLIDE
 
 ```bash
-pip install valkey-glide
+uv pip install valkey-glide python-dotenv
 ```
 
 GLIDE is the official Valkey client - Rust core with Python bindings. It works with both standalone Valkey and ElastiCache for Valkey clusters.
@@ -54,6 +54,11 @@ chat:sess_abc123 → [
 ## Step 4: Connect and Store Messages
 
 ```python
+import os
+from dotenv import load_dotenv
+
+load_dotenv()
+
 import asyncio
 import json
 from glide import GlideClient, GlideClientConfiguration, NodeAddress
