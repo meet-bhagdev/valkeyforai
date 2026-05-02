@@ -1,0 +1,365 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>05 - Provider Adapters - Valkey for AI</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../cookbook.css">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css">
+<style>
+body.light .nav{background:rgba(255,255,255,.9)!important}
+body.light pre{background:rgba(0,0,0,.03)!important;border-color:rgba(0,0,0,.08)!important}
+body.light code{color:#1d1d1f}
+body.light .callout{background:rgba(0,0,0,.02);border-color:rgba(0,0,0,.08)}
+body.light table{border-color:rgba(0,0,0,.08)}
+body.light th{background:rgba(0,0,0,.04)}
+body.light td{border-color:rgba(0,0,0,.06)}
+body.light{--bg:#fff;--bg-elevated:#f5f5f7;--bg-card:rgba(0,0,0,.03);--bg-card-hover:rgba(0,0,0,.06);--brd:rgba(0,0,0,.08);--t1:#1d1d1f;--t2:rgba(29,29,31,.6);--t3:rgba(29,29,31,.4)}
+.theme-toggle{background:rgba(128,128,128,.12);border:1px solid rgba(128,128,128,.2);border-radius:100px;width:36px;height:36px;display:flex;align-items:center;justify-content:center;cursor:pointer;padding:0;position:fixed;top:18px;right:24px;z-index:1001}
+pre{position:relative}
+pre code.hljs{background:transparent!important;padding:0}
+</style>
+</head>
+<body>
+<nav class="nav"><div class="nav-inner"><a href="/" class="nav-logo"><img src="/valkey-logo.svg" alt="Valkey"><span class="accent">for ai</span></a><div class="nav-links"><a href="/#use-cases">Use Cases</a><a href="/#frameworks">Frameworks</a><a href="https://github.com/meet-bhagdev/valkeyforai/tree/main" target="_blank">GitHub</a></div></div></nav>
+<article>
+<div class="breadcrumb"><a href="/">Home</a> → <a href="/cookbooks/betterdb-agent-cache/">@betterdb/agent-cache</a> → 05 Provider Adapters</div>
+<div class="meta"><span class="diff-medium">Intermediate</span><span class="lang">TypeScript</span><span class="lang">~25 min</span></div>
+<h1>Provider <span class="gradient">Adapters</span></h1>
+<p class="lead">Drop-in caching for OpenAI Chat Completions, Responses API, Anthropic Messages, and LlamaIndex. One prepareParams() call translates provider params into the canonical cache key.</p>
+
+<p>Provider adapters translate the native params of each SDK into the canonical <code>LlmCacheParams</code> format before hashing. The pattern is the same across all four adapters:</p>
+<ol>
+<li>Call <code>prepareParams()</code> on the native SDK params</li>
+<li>Pass the result to <code>cache.llm.check()</code></li>
+<li>On a miss, call the provider and build <code>ContentBlock[]</code> from the response</li>
+<li>Store with <code>cache.llm.storeMultipart()</code> — this handles text, tool calls, and reasoning blocks together</li>
+</ol>
+<p>All four adapters support multi-modal content (images, audio, documents) and use the same pluggable binary normalizer for stable hashing.</p>
+<h2>Binary Normalizer</h2>
+<p>The binary normalizer controls how binary content — images, audio, documents — is reduced to a stable string before being included in the cache key hash.</p>
+<p>The <strong>default</strong> is <code>passthrough</code>: the full base64 data string is included literally. This is zero-latency and correct, but means a re-encoded image byte-for-byte identical in content but with different base64 padding will produce a different hash.</p>
+<p>For production use, switch to <code>hashBase64</code> to hash the decoded bytes instead:</p>
+<pre><code class="language-typescript">import { composeNormalizer, hashBase64 } from &#39;@betterdb/agent-cache&#39;;
+
+// Hash base64 image/audio/document bytes — O(n) in content size, no network calls
+const normalizer = composeNormalizer({ base64: hashBase64 });
+</code></pre>
+<p>Other built-in helpers:</p>
+<table>
+<thead>
+<tr>
+<th>Helper</th>
+<th>Behavior</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>hashBase64(data)</code></td>
+<td>SHA-256 of decoded bytes — stable across re-encodings</td>
+</tr>
+<tr>
+<td><code>hashBytes(buf)</code></td>
+<td>SHA-256 of a <code>Buffer</code> or <code>Uint8Array</code></td>
+</tr>
+<tr>
+<td><code>hashUrl(url)</code></td>
+<td>Lowercases scheme+host, sorts query params, returns <code>&quot;url:&lt;normalized&gt;&quot;</code></td>
+</tr>
+<tr>
+<td><code>fetchAndHash(url)</code></td>
+<td>Fetches the URL and returns SHA-256 of the body — most stable, adds latency</td>
+</tr>
+<tr>
+<td><code>passthrough(ref)</code></td>
+<td>Returns the raw data as-is (default)</td>
+</tr>
+</tbody></table>
+<p>For per-kind control:</p>
+<pre><code class="language-typescript">import { composeNormalizer, hashBase64, fetchAndHash } from &#39;@betterdb/agent-cache&#39;;
+
+const normalizer = composeNormalizer({
+  base64: hashBase64,           // Hash inline images/audio
+  byKind: {
+    document: async (ref) =&gt; {  // Fetch and hash remote documents
+      if (ref.source.type === &#39;url&#39;) return fetchAndHash(ref.source.url);
+      return hashBase64((ref.source as { data: string }).data);
+    },
+  },
+});
+</code></pre>
+<hr>
+<h2>OpenAI Chat Completions</h2>
+<pre><code class="language-bash">npm install @betterdb/agent-cache openai iovalkey
+</code></pre>
+<pre><code class="language-typescript">import Valkey from &#39;iovalkey&#39;;
+import OpenAI from &#39;openai&#39;;
+import { AgentCache, composeNormalizer, hashBase64 } from &#39;@betterdb/agent-cache&#39;;
+import { prepareParams } from &#39;@betterdb/agent-cache/openai&#39;;
+import type { ContentBlock, TextBlock, ToolCallBlock } from &#39;@betterdb/agent-cache&#39;;
+import type { ChatCompletionCreateParamsNonStreaming } from &#39;openai/resources/chat/completions&#39;;
+
+const valkey = new Valkey({ host: &#39;localhost&#39;, port: 6379 });
+const cache = new AgentCache({ client: valkey, tierDefaults: { llm: { ttl: 3600 } } });
+const normalizer = composeNormalizer({ base64: hashBase64 });
+const openai = new OpenAI();
+
+async function chat(params: ChatCompletionCreateParamsNonStreaming): Promise&lt;string&gt; {
+  // Translate OpenAI params → canonical LlmCacheParams
+  const cacheParams = await prepareParams(params, { normalizer });
+
+  const cached = await cache.llm.check(cacheParams);
+  if (cached.hit) return cached.response ?? &#39;&#39;;
+
+  const response = await openai.chat.completions.create({ ...params, stream: false });
+  const choice = response.choices[0];
+
+  // Build content blocks — text and tool calls both need to be stored
+  const blocks: ContentBlock[] = [];
+  if (choice.message.content) {
+    blocks.push({ type: &#39;text&#39;, text: choice.message.content } as TextBlock);
+  }
+  if (choice.message.tool_calls) {
+    for (const tc of choice.message.tool_calls) {
+      let args: unknown;
+      try { args = JSON.parse(tc.function.arguments || &#39;{}&#39;); } catch { args = { __raw: tc.function.arguments }; }
+      blocks.push({ type: &#39;tool_call&#39;, id: tc.id, name: tc.function.name, args } as ToolCallBlock);
+    }
+  }
+
+  await cache.llm.storeMultipart(cacheParams, blocks, {
+    tokens: {
+      input: response.usage?.prompt_tokens ?? 0,
+      output: response.usage?.completion_tokens ?? 0,
+    },
+  });
+
+  const textBlocks = blocks.filter((b): b is TextBlock =&gt; b.type === &#39;text&#39;);
+  return textBlocks.map(b =&gt; b.text).join(&#39;&#39;);
+}
+</code></pre>
+<p><code>prepareParams</code> handles all message roles: <code>system</code>, <code>developer</code>, <code>user</code>, <code>assistant</code>, <code>tool</code>, and legacy <code>function</code>. Multi-modal user messages (images, audio, file uploads) are normalized through the binary normalizer before hashing.</p>
+<h3>What Gets Hashed (OpenAI Chat)</h3>
+<p>In addition to the base fields, <code>prepareParams</code> also maps these OpenAI params into the cache key:</p>
+<table>
+<thead>
+<tr>
+<th>OpenAI param</th>
+<th><code>LlmCacheParams</code> field</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>tool_choice</code></td>
+<td><code>toolChoice</code></td>
+</tr>
+<tr>
+<td><code>seed</code></td>
+<td><code>seed</code></td>
+</tr>
+<tr>
+<td><code>stop</code></td>
+<td><code>stop</code></td>
+</tr>
+<tr>
+<td><code>response_format</code></td>
+<td><code>responseFormat</code></td>
+</tr>
+<tr>
+<td><code>prompt_cache_key</code></td>
+<td><code>promptCacheKey</code></td>
+</tr>
+</tbody></table>
+<hr>
+<h2>OpenAI Responses API</h2>
+<pre><code class="language-bash">npm install @betterdb/agent-cache openai iovalkey
+</code></pre>
+<pre><code class="language-typescript">import Valkey from &#39;iovalkey&#39;;
+import OpenAI from &#39;openai&#39;;
+import { AgentCache, composeNormalizer, hashBase64 } from &#39;@betterdb/agent-cache&#39;;
+import { prepareParams } from &#39;@betterdb/agent-cache/openai-responses&#39;;
+import type { ContentBlock, TextBlock, ToolCallBlock, ReasoningBlock } from &#39;@betterdb/agent-cache&#39;;
+import type { ResponseCreateParams } from &#39;openai/resources/responses/responses&#39;;
+
+const valkey = new Valkey({ host: &#39;localhost&#39;, port: 6379 });
+const cache = new AgentCache({ client: valkey, tierDefaults: { llm: { ttl: 3600 } } });
+const normalizer = composeNormalizer({ base64: hashBase64 });
+const openai = new OpenAI();
+
+async function respond(params: ResponseCreateParams): Promise&lt;string&gt; {
+  const cacheParams = await prepareParams(params, { normalizer });
+
+  const cached = await cache.llm.check(cacheParams);
+  if (cached.hit) return cached.response ?? &#39;&#39;;
+
+  const response = await openai.responses.create(params);
+
+  const blocks: ContentBlock[] = [];
+  for (const item of response.output ?? []) {
+    if (item.type === &#39;message&#39;) {
+      for (const part of item.content ?? []) {
+        if (part.type === &#39;output_text&#39;) blocks.push({ type: &#39;text&#39;, text: part.text } as TextBlock);
+      }
+    } else if (item.type === &#39;reasoning&#39;) {
+      const text = (item.summary ?? []).filter((s: { type?: string }) =&gt; s.type === &#39;reasoning_text&#39;).map((s: { text: string }) =&gt; s.text).join(&#39;&#39;);
+      blocks.push({ type: &#39;reasoning&#39;, text } as ReasoningBlock);
+    } else if (item.type === &#39;function_call&#39;) {
+      let args: unknown;
+      try { args = JSON.parse(item.arguments || &#39;{}&#39;); } catch { args = { __raw: item.arguments }; }
+      blocks.push({ type: &#39;tool_call&#39;, id: item.call_id, name: item.name, args } as ToolCallBlock);
+    }
+  }
+
+  await cache.llm.storeMultipart(cacheParams, blocks, {
+    tokens: {
+      input: response.usage?.input_tokens ?? 0,
+      output: response.usage?.output_tokens ?? 0,
+    },
+  });
+
+  const textBlocks = blocks.filter((b): b is TextBlock =&gt; b.type === &#39;text&#39;);
+  return textBlocks.map(b =&gt; b.text).join(&#39;&#39;);
+}
+</code></pre>
+<p><code>instructions</code> is prepended as a <code>system</code> message in the canonical format. The adapter handles <code>reasoning</code> items (extended thinking), <code>function_call</code> / <code>function_call_output</code> item types, and multi-modal <code>input_image</code> / <code>input_file</code> parts. <code>reasoning.effort</code> maps to <code>reasoningEffort</code> in the cache key.</p>
+<hr>
+<h2>Anthropic Messages</h2>
+<pre><code class="language-bash">npm install @betterdb/agent-cache @anthropic-ai/sdk iovalkey
+</code></pre>
+<pre><code class="language-typescript">import Valkey from &#39;iovalkey&#39;;
+import Anthropic from &#39;@anthropic-ai/sdk&#39;;
+import { AgentCache, composeNormalizer, hashBase64 } from &#39;@betterdb/agent-cache&#39;;
+import { prepareParams } from &#39;@betterdb/agent-cache/anthropic&#39;;
+import type { ContentBlock, TextBlock, ToolCallBlock, ReasoningBlock } from &#39;@betterdb/agent-cache&#39;;
+import type { MessageCreateParamsNonStreaming } from &#39;@anthropic-ai/sdk/resources&#39;;
+
+const valkey = new Valkey({ host: &#39;localhost&#39;, port: 6379 });
+const cache = new AgentCache({ client: valkey, tierDefaults: { llm: { ttl: 3600 } } });
+const normalizer = composeNormalizer({ base64: hashBase64 });
+const anthropic = new Anthropic();
+
+async function chat(params: MessageCreateParamsNonStreaming): Promise&lt;string&gt; {
+  const cacheParams = await prepareParams(params, { normalizer });
+
+  const cached = await cache.llm.check(cacheParams);
+  if (cached.hit) return cached.response ?? &#39;&#39;;
+
+  const response = await anthropic.messages.create(params);
+
+  const blocks: ContentBlock[] = [];
+  for (const block of response.content) {
+    if (block.type === &#39;text&#39;) {
+      blocks.push({ type: &#39;text&#39;, text: block.text } as TextBlock);
+    } else if (block.type === &#39;tool_use&#39;) {
+      blocks.push({ type: &#39;tool_call&#39;, id: block.id, name: block.name, args: block.input } as ToolCallBlock);
+    } else if (block.type === &#39;thinking&#39;) {
+      blocks.push({ type: &#39;reasoning&#39;, text: block.thinking } as ReasoningBlock);
+    }
+  }
+
+  await cache.llm.storeMultipart(cacheParams, blocks, {
+    tokens: {
+      input: response.usage.input_tokens,
+      output: response.usage.output_tokens,
+    },
+  });
+
+  const textBlocks = blocks.filter((b): b is TextBlock =&gt; b.type === &#39;text&#39;);
+  return textBlocks.map(b =&gt; b.text).join(&#39;&#39;);
+}
+</code></pre>
+<p><code>params.system</code> is prepended as a <code>system</code> message. <code>tool_result</code> blocks in user messages are split into separate <code>tool</code> messages in the canonical format. <code>thinking</code> and <code>redacted_thinking</code> blocks map to <code>ReasoningBlock</code>. <code>stop_sequences</code> maps to <code>stop</code> in the cache key.</p>
+<hr>
+<h2>LlamaIndex</h2>
+<pre><code class="language-bash">npm install @betterdb/agent-cache @llamaindex/core @llamaindex/openai iovalkey
+</code></pre>
+<pre><code class="language-typescript">import Valkey from &#39;iovalkey&#39;;
+import { OpenAI } from &#39;@llamaindex/openai&#39;;
+import { AgentCache, composeNormalizer, hashBase64 } from &#39;@betterdb/agent-cache&#39;;
+import { prepareParams } from &#39;@betterdb/agent-cache/llamaindex&#39;;
+import type { ContentBlock, TextBlock } from &#39;@betterdb/agent-cache&#39;;
+import type { ChatMessage } from &#39;@llamaindex/core/llms&#39;;
+
+const valkey = new Valkey({ host: &#39;localhost&#39;, port: 6379 });
+const cache = new AgentCache({ client: valkey, tierDefaults: { llm: { ttl: 3600 } } });
+const normalizer = composeNormalizer({ base64: hashBase64 });
+const llm = new OpenAI({ model: &#39;gpt-4o-mini&#39; });
+
+async function chat(messages: ChatMessage[]): Promise&lt;string&gt; {
+  // model must be supplied explicitly — LlamaIndex messages don&#39;t carry it
+  const cacheParams = await prepareParams(messages, {
+    model: &#39;gpt-4o-mini&#39;,
+    normalizer,
+    temperature: 0,
+  });
+
+  const cached = await cache.llm.check(cacheParams);
+  if (cached.hit) return cached.response ?? &#39;&#39;;
+
+  const response = await llm.chat({ messages });
+  const text = response.message.content as string;
+
+  const blocks: ContentBlock[] = [{ type: &#39;text&#39;, text } as TextBlock];
+  const usage = (response.raw as { usage?: { prompt_tokens?: number; completion_tokens?: number } } | null)?.usage;
+
+  await cache.llm.storeMultipart(cacheParams, blocks, {
+    tokens: {
+      input: usage?.prompt_tokens ?? 0,
+      output: usage?.completion_tokens ?? 0,
+    },
+  });
+
+  return text;
+}
+</code></pre>
+<p>The LlamaIndex adapter differs from the others in that the model name is not available from <code>ChatMessage</code> objects — you supply it via <code>opts.model</code>. The <code>memory</code> and <code>developer</code> roles are mapped to <code>system</code>. Tool calls are read from <code>message.options.toolCall</code> and tool results from <code>message.options.toolResult</code>.</p>
+<hr>
+<h2>Adapter Import Paths</h2>
+<table>
+<thead>
+<tr>
+<th>Provider</th>
+<th>Import path</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>OpenAI Chat Completions</td>
+<td><code>@betterdb/agent-cache/openai</code></td>
+</tr>
+<tr>
+<td>OpenAI Responses API</td>
+<td><code>@betterdb/agent-cache/openai-responses</code></td>
+</tr>
+<tr>
+<td>Anthropic Messages</td>
+<td><code>@betterdb/agent-cache/anthropic</code></td>
+</tr>
+<tr>
+<td>LlamaIndex</td>
+<td><code>@betterdb/agent-cache/llamaindex</code></td>
+</tr>
+<tr>
+<td>LangChain</td>
+<td><code>@betterdb/agent-cache/langchain</code></td>
+</tr>
+<tr>
+<td>Vercel AI SDK</td>
+<td><code>@betterdb/agent-cache/ai</code></td>
+</tr>
+<tr>
+<td>LangGraph</td>
+<td><code>@betterdb/agent-cache/langgraph</code></td>
+</tr>
+</tbody></table>
+
+
+<div class="nav-prev-next">
+<a href="04-langgraph.html" class="prev"><span class="label">← Previous</span><span class="title">04 - LangGraph Checkpointing</span></a>
+<div></div>
+</div>
+</article>
+<button class="theme-toggle" onclick="toggleTheme()" aria-label="Toggle theme"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/></svg></button>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+<script>hljs.highlightAll();</script>
+<script>function toggleTheme(){var b=document.body,l=b.classList.toggle("light");localStorage.setItem("theme",l?"light":"dark")}(function(){if(localStorage.getItem("theme")==="light")document.body.classList.add("light")})()</script>
+</body>
+</html>

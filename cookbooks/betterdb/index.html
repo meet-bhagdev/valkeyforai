@@ -322,8 +322,8 @@
   <div class="container">
     <div class="breadcrumb"><a href="/">Home</a> → <a href="/#frameworks">Frameworks</a> → BetterDB</div>
     <h1>BetterDB + <span class="gradient">Valkey</span></h1>
-    <p class="subtitle">Two npm packages for Valkey-backed LLM caching. Semantic caching with vector search, and
-      multi-tier agent caching with LangGraph support. TypeScript, built-in OTel + Prometheus.</p>
+    <p class="subtitle">TypeScript and Python packages for Valkey-backed LLM caching. Semantic caching with vector search, and
+      multi-tier agent caching with LangGraph support. Built-in OTel + Prometheus.</p>
 
     <!-- @betterdb/semantic-cache -->
     <div class="pkg-section">
@@ -426,6 +426,75 @@
             <p>BetterDBSaver on vanilla Valkey 7+ - no Redis 8, no RedisJSON, no RediSearch required.</p>
             <div class="cb-tags"><span class="tag-cyan">Advanced</span><span class="tag-cyan">~25 min</span><span
                 class="tag-cyan">TypeScript</span></div>
+          </div>
+        </a>
+        <a class="cb-card" href="/cookbooks/betterdb-agent-cache/05-provider-adapters.html">
+          <div class="cb-num cyan">05</div>
+          <div class="cb-content">
+            <h3>Provider Adapters</h3>
+            <p>Drop-in caching for OpenAI Chat Completions, Responses API, Anthropic Messages, and LlamaIndex — plus the pluggable binary normalizer for multi-modal content.</p>
+            <div class="cb-tags"><span class="tag-cyan">Intermediate</span><span class="tag-cyan">~25 min</span><span
+                class="tag-cyan">TypeScript</span></div>
+          </div>
+        </a>
+      </div>
+    </div>
+
+    <!-- betterdb-agent-cache (Python) -->
+    <div class="pkg-section">
+      <div class="pkg-header">
+        <div class="pkg-icon" style="background:linear-gradient(135deg,#f59e0b,#ef4444)">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2"
+            stroke-linecap="round" stroke-linejoin="round">
+            <rect x="2" y="3" width="20" height="5" rx="1" />
+            <rect x="2" y="10" width="20" height="5" rx="1" />
+            <rect x="2" y="17" width="20" height="5" rx="1" />
+          </svg>
+        </div>
+        <div class="pkg-header-text">
+          <h2>betterdb-agent-cache <span style="font-size:13px;font-weight:500;color:var(--t2)">(Python)</span></h2>
+          <p>Python port · feature-identical to the TypeScript package · async/await · 1,900+ model cost table</p>
+        </div>
+      </div>
+      <div class="cookbook-list">
+        <a class="cb-card" href="/cookbooks/betterdb-agent-cache-py/01-getting-started.html">
+          <div class="cb-num" style="background:linear-gradient(135deg,#f59e0b,#ef4444);-webkit-background-clip:text;-webkit-text-fill-color:transparent">01</div>
+          <div class="cb-content">
+            <h3>Getting Started</h3>
+            <p>LLM cache, tool cache, and session store on vanilla Valkey 7+ — three tiers, one connection.</p>
+            <div class="cb-tags"><span style="background:rgba(245,158,11,.12);color:#fcd34d;padding:2px 9px;border-radius:100px;font-size:11px;font-weight:600">Beginner</span><span style="background:rgba(245,158,11,.12);color:#fcd34d;padding:2px 9px;border-radius:100px;font-size:11px;font-weight:600">~15 min</span><span style="background:rgba(245,158,11,.12);color:#fcd34d;padding:2px 9px;border-radius:100px;font-size:11px;font-weight:600">Python</span></div>
+          </div>
+        </a>
+        <a class="cb-card" href="/cookbooks/betterdb-agent-cache-py/02-llm-and-tool-cache.html">
+          <div class="cb-num" style="background:linear-gradient(135deg,#f59e0b,#ef4444);-webkit-background-clip:text;-webkit-text-fill-color:transparent">02</div>
+          <div class="cb-content">
+            <h3>LLM &amp; Tool Cache</h3>
+            <p>Exact-match LLM caching with cost tracking. Per-tool TTL policies and tool_effectiveness() recommendations.</p>
+            <div class="cb-tags"><span style="background:rgba(245,158,11,.12);color:#fcd34d;padding:2px 9px;border-radius:100px;font-size:11px;font-weight:600">Intermediate</span><span style="background:rgba(245,158,11,.12);color:#fcd34d;padding:2px 9px;border-radius:100px;font-size:11px;font-weight:600">~20 min</span><span style="background:rgba(245,158,11,.12);color:#fcd34d;padding:2px 9px;border-radius:100px;font-size:11px;font-weight:600">Python</span></div>
+          </div>
+        </a>
+        <a class="cb-card" href="/cookbooks/betterdb-agent-cache-py/03-session-store.html">
+          <div class="cb-num" style="background:linear-gradient(135deg,#f59e0b,#ef4444);-webkit-background-clip:text;-webkit-text-fill-color:transparent">03</div>
+          <div class="cb-content">
+            <h3>Agent Session Store</h3>
+            <p>Per-field TTL, sliding-window refresh, and multi-step agent state patterns.</p>
+            <div class="cb-tags"><span style="background:rgba(245,158,11,.12);color:#fcd34d;padding:2px 9px;border-radius:100px;font-size:11px;font-weight:600">Intermediate</span><span style="background:rgba(245,158,11,.12);color:#fcd34d;padding:2px 9px;border-radius:100px;font-size:11px;font-weight:600">~20 min</span><span style="background:rgba(245,158,11,.12);color:#fcd34d;padding:2px 9px;border-radius:100px;font-size:11px;font-weight:600">Python</span></div>
+          </div>
+        </a>
+        <a class="cb-card" href="/cookbooks/betterdb-agent-cache-py/04-provider-adapters.html">
+          <div class="cb-num" style="background:linear-gradient(135deg,#f59e0b,#ef4444);-webkit-background-clip:text;-webkit-text-fill-color:transparent">04</div>
+          <div class="cb-content">
+            <h3>Provider Adapters</h3>
+            <p>Drop-in caching for OpenAI Chat, Responses API, Anthropic, and LlamaIndex with the pluggable binary normalizer.</p>
+            <div class="cb-tags"><span style="background:rgba(245,158,11,.12);color:#fcd34d;padding:2px 9px;border-radius:100px;font-size:11px;font-weight:600">Intermediate</span><span style="background:rgba(245,158,11,.12);color:#fcd34d;padding:2px 9px;border-radius:100px;font-size:11px;font-weight:600">~25 min</span><span style="background:rgba(245,158,11,.12);color:#fcd34d;padding:2px 9px;border-radius:100px;font-size:11px;font-weight:600">Python</span></div>
+          </div>
+        </a>
+        <a class="cb-card" href="/cookbooks/betterdb-agent-cache-py/05-langgraph.html">
+          <div class="cb-num" style="background:linear-gradient(135deg,#f59e0b,#ef4444);-webkit-background-clip:text;-webkit-text-fill-color:transparent">05</div>
+          <div class="cb-content">
+            <h3>LangGraph Checkpointing</h3>
+            <p>BetterDBSaver on vanilla Valkey 7+ - no Redis 8, no RedisJSON, no RediSearch required.</p>
+            <div class="cb-tags"><span style="background:rgba(245,158,11,.12);color:#fcd34d;padding:2px 9px;border-radius:100px;font-size:11px;font-weight:600">Advanced</span><span style="background:rgba(245,158,11,.12);color:#fcd34d;padding:2px 9px;border-radius:100px;font-size:11px;font-weight:600">~25 min</span><span style="background:rgba(245,158,11,.12);color:#fcd34d;padding:2px 9px;border-radius:100px;font-size:11px;font-weight:600">Python</span></div>
           </div>
         </a>
       </div>

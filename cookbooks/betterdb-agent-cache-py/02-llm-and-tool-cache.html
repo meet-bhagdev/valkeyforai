@@ -1,0 +1,267 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>02 - LLM & Tool Cache - Valkey for AI</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../cookbook.css">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css">
+<style>
+body.light .nav{background:rgba(255,255,255,.9)!important}
+body.light pre{background:rgba(0,0,0,.03)!important;border-color:rgba(0,0,0,.08)!important}
+body.light code{color:#1d1d1f}
+body.light .callout{background:rgba(0,0,0,.02);border-color:rgba(0,0,0,.08)}
+body.light table{border-color:rgba(0,0,0,.08)}
+body.light th{background:rgba(0,0,0,.04)}
+body.light td{border-color:rgba(0,0,0,.06)}
+body.light{--bg:#fff;--bg-elevated:#f5f5f7;--bg-card:rgba(0,0,0,.03);--bg-card-hover:rgba(0,0,0,.06);--brd:rgba(0,0,0,.08);--t1:#1d1d1f;--t2:rgba(29,29,31,.6);--t3:rgba(29,29,31,.4)}
+.theme-toggle{background:rgba(128,128,128,.12);border:1px solid rgba(128,128,128,.2);border-radius:100px;width:36px;height:36px;display:flex;align-items:center;justify-content:center;cursor:pointer;padding:0;position:fixed;top:18px;right:24px;z-index:1001}
+pre{position:relative}
+pre code.hljs{background:transparent!important;padding:0}
+</style>
+</head>
+<body>
+<nav class="nav"><div class="nav-inner"><a href="/" class="nav-logo"><img src="/valkey-logo.svg" alt="Valkey"><span class="accent">for ai</span></a><div class="nav-links"><a href="/#use-cases">Use Cases</a><a href="/#frameworks">Frameworks</a><a href="https://github.com/meet-bhagdev/valkeyforai/tree/main" target="_blank">GitHub</a></div></div></nav>
+<article>
+<div class="breadcrumb"><a href="/">Home</a> → <a href="/cookbooks/betterdb-agent-cache-py/">betterdb-agent-cache (Python)</a> → 02 LLM & Tool Cache</div>
+<div class="meta"><span class="diff-medium">Intermediate</span><span class="lang">Python</span><span class="lang">~20 min</span></div>
+<h1>LLM &amp; Tool <span class="gradient">Cache</span></h1>
+<p class="lead">Cache exact LLM responses and tool call results. Track cost savings per model. Use tool_effectiveness() to tune per-tool TTLs automatically.</p>
+
+<h2>LLM Cache Tier</h2>
+<p>The LLM cache stores full LLM responses by exact match on all parameters that affect the output.</p>
+<h3>What Gets Hashed</h3>
+<p>The cache key is a SHA-256 hash of these fields (with recursively sorted dict keys for determinism):</p>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Notes</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>model</code></td>
+<td><code>&#39;gpt-4o&#39;</code>, <code>&#39;claude-opus-4-6&#39;</code>, etc.</td>
+</tr>
+<tr>
+<td><code>messages</code></td>
+<td>Full message list including roles and content</td>
+</tr>
+<tr>
+<td><code>temperature</code></td>
+<td><code>None</code> is treated as unset</td>
+</tr>
+<tr>
+<td><code>top_p</code></td>
+<td><code>None</code> is treated as unset</td>
+</tr>
+<tr>
+<td><code>max_tokens</code></td>
+<td><code>None</code> is treated as unset</td>
+</tr>
+<tr>
+<td><code>tools</code></td>
+<td>Tool definitions if present</td>
+</tr>
+<tr>
+<td><code>tool_choice</code></td>
+<td><code>None</code> is treated as unset</td>
+</tr>
+<tr>
+<td><code>seed</code></td>
+<td><code>None</code> is treated as unset</td>
+</tr>
+<tr>
+<td><code>stop</code></td>
+<td><code>None</code> is treated as unset</td>
+</tr>
+<tr>
+<td><code>response_format</code></td>
+<td><code>None</code> is treated as unset</td>
+</tr>
+<tr>
+<td><code>reasoning_effort</code></td>
+<td>For models supporting extended thinking</td>
+</tr>
+<tr>
+<td><code>prompt_cache_key</code></td>
+<td>Pass-through for provider-level prompt caching</td>
+</tr>
+</tbody></table>
+<h3>Check and Store</h3>
+<pre><code class="language-python">import valkey.asyncio as valkey_client
+from openai import AsyncOpenAI
+from betterdb_agent_cache import AgentCache, TierDefaults
+from betterdb_agent_cache.types import AgentCacheOptions, LlmStoreOptions
+
+client = valkey_client.Valkey(host=&quot;localhost&quot;, port=6379)
+openai = AsyncOpenAI()
+
+# cost_table is optional — 1,900+ models covered by default (see &quot;Default Cost Table&quot; below)
+cache = AgentCache(AgentCacheOptions(
+    client=client,
+    tier_defaults={&quot;llm&quot;: TierDefaults(ttl=3600)},
+))
+
+async def cached_completion(params: dict) -&gt; str:
+    cached = await cache.llm.check(params)
+    if cached.hit:
+        return cached.response or &quot;&quot;
+
+    response = await openai.chat.completions.create(**params)
+    text = response.choices[0].message.content or &quot;&quot;
+    usage = response.usage
+
+    await cache.llm.store(params, text, LlmStoreOptions(
+        tokens={
+            &quot;input&quot;:  usage.prompt_tokens     if usage else 0,
+            &quot;output&quot;: usage.completion_tokens if usage else 0,
+        },
+    ))
+    return text
+</code></pre>
+<p>Token counts in <code>store()</code> enable cost savings tracking via the cost table. Without <code>tokens</code>, cost tracking is skipped for that entry.</p>
+<h3>Invalidating by Model</h3>
+<pre><code class="language-python">deleted = await cache.llm.invalidate_by_model(&quot;gpt-4o-mini&quot;)
+print(f&quot;Deleted {deleted} entries&quot;)
+</code></pre>
+<hr>
+<h2>Tool Cache Tier</h2>
+<p>The tool cache stores tool/function call results. Valuable for expensive external API calls — weather, geocoding, database queries, web search — that return stable results for the same inputs.</p>
+<h3>Check and Store</h3>
+<pre><code class="language-python">import json
+from betterdb_agent_cache.types import ToolStoreOptions
+
+async def cached_tool(name: str, args: dict) -&gt; dict:
+    cached = await cache.tool.check(name, args)
+    if cached.hit:
+        return json.loads(cached.response)
+
+    result = await call_tool(name, args)  # your tool implementation
+
+    await cache.tool.store(name, args, json.dumps(result), ToolStoreOptions(
+        ttl=300,    # per-call TTL override
+        cost=0.005, # API call cost in dollars
+    ))
+    return result
+</code></pre>
+<h3>Per-Tool TTL Policies</h3>
+<pre><code class="language-python">from betterdb_agent_cache.types import ToolPolicy
+
+# Weather data: short TTL, changes frequently
+await cache.tool.set_policy(&quot;get_weather&quot;,    ToolPolicy(ttl=300))    # 5 min
+
+# Stock prices: very short TTL
+await cache.tool.set_policy(&quot;get_stock_price&quot;, ToolPolicy(ttl=60))    # 1 min
+
+# Geocoding: long TTL, addresses don&#39;t change
+await cache.tool.set_policy(&quot;geocode_address&quot;, ToolPolicy(ttl=86400)) # 24h
+
+# Web search: medium TTL
+await cache.tool.set_policy(&quot;web_search&quot;,     ToolPolicy(ttl=3600))   # 1h
+</code></pre>
+<p>TTL precedence: per-call <code>ttl</code> &gt; tool policy &gt; <code>tier_defaults[&quot;tool&quot;].ttl</code> &gt; <code>default_ttl</code>.</p>
+<h3>Invalidation</h3>
+<pre><code class="language-python"># Invalidate all results for a specific tool
+deleted = await cache.tool.invalidate_by_tool(&quot;get_weather&quot;)
+print(f&quot;Deleted {deleted} weather cache entries&quot;)
+
+# Invalidate one specific call
+existed = await cache.tool.invalidate(&quot;get_weather&quot;, {&quot;city&quot;: &quot;Sofia&quot;})
+</code></pre>
+<hr>
+<h2>Cost Tracking and Stats</h2>
+<h3>Aggregate Stats</h3>
+<pre><code class="language-python">stats = await cache.stats()
+print(stats.llm.hits, stats.llm.misses, f&quot;{stats.llm.hit_rate:.0%}&quot;)
+# 150 50 75%
+
+print(f&quot;Cost saved: ${stats.cost_saved_micros / 1_000_000:.4f}&quot;)
+# Cost saved: $12.5000
+
+# Per-tool breakdown
+for tool_name, tool_stats in stats.per_tool.items():
+    print(f&quot;{tool_name}: {tool_stats.hit_rate:.0%} hit rate&quot;)
+</code></pre>
+<p>Cost savings are stored as microdollars (integers) to avoid floating-point precision issues. Divide by <code>1_000_000</code> to get dollars.</p>
+<h3>Tool Effectiveness Recommendations</h3>
+<pre><code class="language-python">effectiveness = await cache.tool_effectiveness()
+for entry in effectiveness:
+    print(f&quot;{entry.tool}: {entry.hit_rate:.0%} hit rate — {entry.recommendation}&quot;)
+# get_weather:   85% hit rate — increase_ttl
+# web_search:    62% hit rate — optimal
+# rare_api_call:  8% hit rate — decrease_ttl_or_disable
+</code></pre>
+<table>
+<thead>
+<tr>
+<th>Recommendation</th>
+<th>Condition</th>
+<th>Action</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>increase_ttl</code></td>
+<td>Hit rate &gt; 80% and TTL &lt; 1 hour</td>
+<td>Results are stable and reused frequently — extend TTL</td>
+</tr>
+<tr>
+<td><code>optimal</code></td>
+<td>Hit rate 40–80%</td>
+<td>No change needed</td>
+</tr>
+<tr>
+<td><code>decrease_ttl_or_disable</code></td>
+<td>Hit rate &lt; 40%</td>
+<td>Results change too fast or rarely repeated</td>
+</tr>
+</tbody></table>
+<hr>
+<h2>Default Cost Table</h2>
+<p><code>betterdb-agent-cache</code> ships a bundled cost table sourced from <a href="https://github.com/BerriAI/litellm/blob/main/model_prices_and_context_window.json">LiteLLM&#39;s model pricing data</a> and refreshed on every release. Cost tracking works out of the box for 1,900+ models — no <code>cost_table</code> configuration required.</p>
+<pre><code class="language-python"># No cost_table needed — GPT-4o, Claude, Gemini, and 1,900+ others are covered
+cache = AgentCache(AgentCacheOptions(client=client))
+</code></pre>
+<h3>Overriding Specific Models</h3>
+<p>User-supplied <code>cost_table</code> entries merge on top of the defaults:</p>
+<pre><code class="language-python">from betterdb_agent_cache import ModelCost
+
+cache = AgentCache(AgentCacheOptions(
+    client=client,
+    cost_table={
+        &quot;my-fine-tuned-gpt4o&quot;: ModelCost(input_per_1k=0.005, output_per_1k=0.015),
+    },
+))
+</code></pre>
+<h3>Inspecting the Bundled Table</h3>
+<pre><code class="language-python">from betterdb_agent_cache import DEFAULT_COST_TABLE
+
+print(DEFAULT_COST_TABLE.get(&quot;gpt-4o-mini&quot;))
+# ModelCost(input_per_1k=0.00015, output_per_1k=0.0006)
+
+print(len(DEFAULT_COST_TABLE))
+# 1900+
+</code></pre>
+<h3>Disabling the Default Table</h3>
+<pre><code class="language-python">cache = AgentCache(AgentCacheOptions(
+    client=client,
+    use_default_cost_table=False,
+    cost_table={
+        &quot;gpt-4o&quot;: ModelCost(input_per_1k=0.0025, output_per_1k=0.010),
+    },
+))
+</code></pre>
+
+
+<div class="nav-prev-next">
+<a href="01-getting-started.html" class="prev"><span class="label">← Previous</span><span class="title">01 - Getting Started</span></a>
+<a href="03-session-store.html" class="next"><span class="label">Next →</span><span class="title">03 - Session Store</span></a>
+</div>
+</article>
+<button class="theme-toggle" onclick="toggleTheme()" aria-label="Toggle theme"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/></svg></button>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+<script>hljs.highlightAll();</script>
+<script>function toggleTheme(){var b=document.body,l=b.classList.toggle("light");localStorage.setItem("theme",l?"light":"dark")}(function(){if(localStorage.getItem("theme")==="light")document.body.classList.add("light")})()</script>
+</body>
+</html>

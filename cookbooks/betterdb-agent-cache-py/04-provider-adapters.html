@@ -1,0 +1,314 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>04 - Provider Adapters - Valkey for AI</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../cookbook.css">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css">
+<style>
+body.light .nav{background:rgba(255,255,255,.9)!important}
+body.light pre{background:rgba(0,0,0,.03)!important;border-color:rgba(0,0,0,.08)!important}
+body.light code{color:#1d1d1f}
+body.light .callout{background:rgba(0,0,0,.02);border-color:rgba(0,0,0,.08)}
+body.light table{border-color:rgba(0,0,0,.08)}
+body.light th{background:rgba(0,0,0,.04)}
+body.light td{border-color:rgba(0,0,0,.06)}
+body.light{--bg:#fff;--bg-elevated:#f5f5f7;--bg-card:rgba(0,0,0,.03);--bg-card-hover:rgba(0,0,0,.06);--brd:rgba(0,0,0,.08);--t1:#1d1d1f;--t2:rgba(29,29,31,.6);--t3:rgba(29,29,31,.4)}
+.theme-toggle{background:rgba(128,128,128,.12);border:1px solid rgba(128,128,128,.2);border-radius:100px;width:36px;height:36px;display:flex;align-items:center;justify-content:center;cursor:pointer;padding:0;position:fixed;top:18px;right:24px;z-index:1001}
+pre{position:relative}
+pre code.hljs{background:transparent!important;padding:0}
+</style>
+</head>
+<body>
+<nav class="nav"><div class="nav-inner"><a href="/" class="nav-logo"><img src="/valkey-logo.svg" alt="Valkey"><span class="accent">for ai</span></a><div class="nav-links"><a href="/#use-cases">Use Cases</a><a href="/#frameworks">Frameworks</a><a href="https://github.com/meet-bhagdev/valkeyforai/tree/main" target="_blank">GitHub</a></div></div></nav>
+<article>
+<div class="breadcrumb"><a href="/">Home</a> → <a href="/cookbooks/betterdb-agent-cache-py/">betterdb-agent-cache (Python)</a> → 04 Provider Adapters</div>
+<div class="meta"><span class="diff-medium">Intermediate</span><span class="lang">Python</span><span class="lang">~25 min</span></div>
+<h1>Provider <span class="gradient">Adapters</span></h1>
+<p class="lead">Drop-in caching for OpenAI Chat Completions, Responses API, Anthropic Messages, and LlamaIndex. One prepare_params() call translates provider params into the canonical cache key.</p>
+
+<p>Provider adapters translate the native params of each SDK into the canonical <code>LlmCacheParams</code> format before hashing. The pattern is the same across all four adapters:</p>
+<ol>
+<li>Call <code>prepare_params()</code> on the native SDK params dict</li>
+<li>Pass the result to <code>cache.llm.check()</code></li>
+<li>On a miss, call the provider and build a list of content block dicts from the response</li>
+<li>Store with <code>cache.llm.store_multipart()</code> — handles text, tool calls, and reasoning blocks together</li>
+</ol>
+<h2>Binary Normalizer</h2>
+<p>The binary normalizer controls how binary content — images, audio, documents — is reduced to a stable string before being included in the cache key hash.</p>
+<p>The <strong>default</strong> is <code>passthrough</code>: the full base64 data string is included literally. Zero-latency and correct, but a re-encoded image that is byte-for-byte identical but with different base64 padding will produce a different hash.</p>
+<p>For production use, switch to <code>hash_base64</code>:</p>
+<pre><code class="language-python">from betterdb_agent_cache import compose_normalizer, hash_base64
+
+# Hash base64 image/audio/document bytes — O(n) in content size, no network calls
+normalizer = compose_normalizer({&quot;base64&quot;: hash_base64})
+</code></pre>
+<p>Other built-in helpers:</p>
+<table>
+<thead>
+<tr>
+<th>Helper</th>
+<th>Behavior</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>hash_base64(data)</code></td>
+<td>SHA-256 of decoded bytes — stable across re-encodings</td>
+</tr>
+<tr>
+<td><code>hash_bytes(data)</code></td>
+<td>SHA-256 of raw <code>bytes</code></td>
+</tr>
+<tr>
+<td><code>hash_url(url)</code></td>
+<td>Lowercases scheme+host, sorts query params, returns <code>&quot;url:&lt;normalised&gt;&quot;</code></td>
+</tr>
+<tr>
+<td><code>fetch_and_hash(url)</code></td>
+<td>Fetches the URL (requires <code>aiohttp</code>) and returns SHA-256 of the body</td>
+</tr>
+<tr>
+<td><code>passthrough(ref)</code></td>
+<td>Returns the raw data as-is (default)</td>
+</tr>
+</tbody></table>
+<hr>
+<h2>OpenAI Chat Completions</h2>
+<pre><code class="language-bash">pip install &quot;betterdb-agent-cache[openai]&quot;
+</code></pre>
+<pre><code class="language-python">import json
+import valkey.asyncio as valkey_client
+from openai import AsyncOpenAI
+from betterdb_agent_cache import AgentCache, TierDefaults, compose_normalizer, hash_base64
+from betterdb_agent_cache.adapters.openai import OpenAIPrepareOptions, prepare_params
+from betterdb_agent_cache.types import AgentCacheOptions, LlmStoreOptions
+
+client = valkey_client.Valkey(host=&quot;localhost&quot;, port=6379)
+cache = AgentCache(AgentCacheOptions(
+    client=client,
+    tier_defaults={&quot;llm&quot;: TierDefaults(ttl=3600)},
+))
+normalizer = compose_normalizer({&quot;base64&quot;: hash_base64})
+opts = OpenAIPrepareOptions(normalizer=normalizer)
+openai = AsyncOpenAI()
+
+async def chat(params: dict) -&gt; str:
+    # Translate OpenAI params → canonical LlmCacheParams
+    cache_params = await prepare_params(params, opts)
+
+    cached = await cache.llm.check(cache_params)
+    if cached.hit:
+        return cached.response or &quot;&quot;
+
+    response = await openai.chat.completions.create(**params, stream=False)
+    choice = response.choices[0]
+
+    blocks = []
+    if choice.message.content:
+        blocks.append({&quot;type&quot;: &quot;text&quot;, &quot;text&quot;: choice.message.content})
+    for tc in choice.message.tool_calls or []:
+        try:
+            args = json.loads(tc.function.arguments or &quot;{}&quot;)
+        except json.JSONDecodeError:
+            args = {&quot;__raw&quot;: tc.function.arguments}
+        blocks.append({&quot;type&quot;: &quot;tool_call&quot;, &quot;id&quot;: tc.id, &quot;name&quot;: tc.function.name, &quot;args&quot;: args})
+
+    await cache.llm.store_multipart(cache_params, blocks, LlmStoreOptions(tokens={
+        &quot;input&quot;:  response.usage.prompt_tokens     if response.usage else 0,
+        &quot;output&quot;: response.usage.completion_tokens if response.usage else 0,
+    }))
+
+    return &quot; &quot;.join(b[&quot;text&quot;] for b in blocks if b.get(&quot;type&quot;) == &quot;text&quot;)
+</code></pre>
+<p><code>prepare_params</code> handles all message roles: <code>system</code>, <code>developer</code>, <code>user</code>, <code>assistant</code>, <code>tool</code>, and legacy <code>function</code>. Multi-modal user messages (images, audio, file uploads) are normalized through the binary normalizer before hashing.</p>
+<hr>
+<h2>OpenAI Responses API</h2>
+<pre><code class="language-bash">pip install &quot;betterdb-agent-cache[openai]&quot;
+</code></pre>
+<pre><code class="language-python">import valkey.asyncio as valkey_client
+from openai import AsyncOpenAI
+from betterdb_agent_cache import AgentCache, TierDefaults, compose_normalizer, hash_base64
+from betterdb_agent_cache.adapters.openai_responses import OpenAIResponsesPrepareOptions, prepare_params
+from betterdb_agent_cache.types import AgentCacheOptions, LlmStoreOptions
+
+client = valkey_client.Valkey(host=&quot;localhost&quot;, port=6379)
+cache = AgentCache(AgentCacheOptions(
+    client=client,
+    tier_defaults={&quot;llm&quot;: TierDefaults(ttl=3600)},
+))
+normalizer = compose_normalizer({&quot;base64&quot;: hash_base64})
+opts = OpenAIResponsesPrepareOptions(normalizer=normalizer)
+openai = AsyncOpenAI()
+
+async def respond(params: dict) -&gt; str:
+    cache_params = await prepare_params(params, opts)
+
+    cached = await cache.llm.check(cache_params)
+    if cached.hit:
+        return cached.response or &quot;&quot;
+
+    response = await openai.responses.create(**params)
+
+    blocks = []
+    for item in response.output or []:
+        if item.type == &quot;message&quot;:
+            for part in item.content or []:
+                if part.type == &quot;output_text&quot;:
+                    blocks.append({&quot;type&quot;: &quot;text&quot;, &quot;text&quot;: part.text})
+        elif item.type == &quot;reasoning&quot;:
+            text = &quot; &quot;.join(s.text for s in (item.summary or []) if s.type == &quot;reasoning_text&quot;)
+            blocks.append({&quot;type&quot;: &quot;reasoning&quot;, &quot;text&quot;: text})
+        elif item.type == &quot;function_call&quot;:
+            import json
+            try:
+                args = json.loads(item.arguments or &quot;{}&quot;)
+            except json.JSONDecodeError:
+                args = {&quot;__raw&quot;: item.arguments}
+            blocks.append({&quot;type&quot;: &quot;tool_call&quot;, &quot;id&quot;: item.call_id, &quot;name&quot;: item.name, &quot;args&quot;: args})
+
+    await cache.llm.store_multipart(cache_params, blocks, LlmStoreOptions(tokens={
+        &quot;input&quot;:  response.usage.input_tokens  if response.usage else 0,
+        &quot;output&quot;: response.usage.output_tokens if response.usage else 0,
+    }))
+
+    return &quot; &quot;.join(b[&quot;text&quot;] for b in blocks if b.get(&quot;type&quot;) == &quot;text&quot;)
+</code></pre>
+<p><code>instructions</code> is prepended as a <code>system</code> message. The adapter handles <code>reasoning</code> items, <code>function_call</code>/<code>function_call_output</code> item types, and multi-modal input parts. <code>reasoning.effort</code> maps to <code>reasoning_effort</code> in the cache key.</p>
+<hr>
+<h2>Anthropic Messages</h2>
+<pre><code class="language-bash">pip install &quot;betterdb-agent-cache[anthropic]&quot;
+</code></pre>
+<pre><code class="language-python">import valkey.asyncio as valkey_client
+import anthropic as sdk
+from betterdb_agent_cache import AgentCache, TierDefaults, compose_normalizer, hash_base64
+from betterdb_agent_cache.adapters.anthropic import AnthropicPrepareOptions, prepare_params
+from betterdb_agent_cache.types import AgentCacheOptions, LlmStoreOptions
+
+client = valkey_client.Valkey(host=&quot;localhost&quot;, port=6379)
+cache = AgentCache(AgentCacheOptions(
+    client=client,
+    tier_defaults={&quot;llm&quot;: TierDefaults(ttl=3600)},
+))
+normalizer = compose_normalizer({&quot;base64&quot;: hash_base64})
+opts = AnthropicPrepareOptions(normalizer=normalizer)
+anthropic = sdk.AsyncAnthropic()
+
+async def chat(params: dict) -&gt; str:
+    cache_params = await prepare_params(params, opts)
+
+    cached = await cache.llm.check(cache_params)
+    if cached.hit:
+        return cached.response or &quot;&quot;
+
+    response = await anthropic.messages.create(**params)
+
+    blocks = []
+    for block in response.content:
+        if block.type == &quot;text&quot;:
+            blocks.append({&quot;type&quot;: &quot;text&quot;, &quot;text&quot;: block.text})
+        elif block.type == &quot;tool_use&quot;:
+            blocks.append({&quot;type&quot;: &quot;tool_call&quot;, &quot;id&quot;: block.id, &quot;name&quot;: block.name, &quot;args&quot;: block.input})
+        elif block.type == &quot;thinking&quot;:
+            blocks.append({&quot;type&quot;: &quot;reasoning&quot;, &quot;text&quot;: block.thinking,
+                           &quot;opaqueSignature&quot;: getattr(block, &quot;signature&quot;, None)})
+
+    await cache.llm.store_multipart(cache_params, blocks, LlmStoreOptions(tokens={
+        &quot;input&quot;:  response.usage.input_tokens,
+        &quot;output&quot;: response.usage.output_tokens,
+    }))
+
+    return &quot; &quot;.join(b[&quot;text&quot;] for b in blocks if b.get(&quot;type&quot;) == &quot;text&quot;)
+</code></pre>
+<p><code>params[&quot;system&quot;]</code> is prepended as a <code>system</code> message. <code>tool_result</code> blocks in user messages are split into separate <code>tool</code> messages. <code>thinking</code> and <code>redacted_thinking</code> blocks map to <code>reasoning</code> blocks. <code>stop_sequences</code> maps to <code>stop</code> in the cache key.</p>
+<hr>
+<h2>LlamaIndex</h2>
+<pre><code class="language-bash">pip install &quot;betterdb-agent-cache[llamaindex]&quot;
+</code></pre>
+<pre><code class="language-python">import valkey.asyncio as valkey_client
+from llama_index.llms.openai import OpenAI
+from betterdb_agent_cache import AgentCache, TierDefaults, compose_normalizer, hash_base64
+from betterdb_agent_cache.adapters.llamaindex import LlamaIndexPrepareOptions, prepare_params
+from betterdb_agent_cache.types import AgentCacheOptions, LlmStoreOptions
+
+client = valkey_client.Valkey(host=&quot;localhost&quot;, port=6379)
+cache = AgentCache(AgentCacheOptions(
+    client=client,
+    tier_defaults={&quot;llm&quot;: TierDefaults(ttl=3600)},
+))
+normalizer = compose_normalizer({&quot;base64&quot;: hash_base64})
+llm = OpenAI(model=&quot;gpt-4o-mini&quot;)
+
+async def chat(messages: list) -&gt; str:
+    # model must be supplied explicitly — LlamaIndex messages don&#39;t carry it
+    opts = LlamaIndexPrepareOptions(
+        model=&quot;gpt-4o-mini&quot;,
+        normalizer=normalizer,
+        temperature=0,
+    )
+    cache_params = await prepare_params(messages, opts)
+
+    cached = await cache.llm.check(cache_params)
+    if cached.hit:
+        return cached.response or &quot;&quot;
+
+    response = await llm.achat(messages)
+    text = str(response.message.content)
+    blocks = [{&quot;type&quot;: &quot;text&quot;, &quot;text&quot;: text}]
+
+    usage = getattr(response.raw, &quot;usage&quot;, None)
+    await cache.llm.store_multipart(cache_params, blocks, LlmStoreOptions(tokens={
+        &quot;input&quot;:  getattr(usage, &quot;prompt_tokens&quot;,     0) if usage else 0,
+        &quot;output&quot;: getattr(usage, &quot;completion_tokens&quot;, 0) if usage else 0,
+    }))
+    return text
+</code></pre>
+<p>The model name is not available from LlamaIndex message objects — supply it via <code>LlamaIndexPrepareOptions.model</code>. The <code>memory</code> and <code>developer</code> roles are mapped to <code>system</code>. Tool calls are read from <code>message.options[&quot;toolCall&quot;]</code> and tool results from <code>message.options[&quot;toolResult&quot;]</code>.</p>
+<hr>
+<h2>Adapter Import Paths</h2>
+<table>
+<thead>
+<tr>
+<th>Provider</th>
+<th>Import path</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>OpenAI Chat Completions</td>
+<td><code>betterdb_agent_cache.adapters.openai</code></td>
+</tr>
+<tr>
+<td>OpenAI Responses API</td>
+<td><code>betterdb_agent_cache.adapters.openai_responses</code></td>
+</tr>
+<tr>
+<td>Anthropic Messages</td>
+<td><code>betterdb_agent_cache.adapters.anthropic</code></td>
+</tr>
+<tr>
+<td>LlamaIndex</td>
+<td><code>betterdb_agent_cache.adapters.llamaindex</code></td>
+</tr>
+<tr>
+<td>LangChain</td>
+<td><code>betterdb_agent_cache.adapters.langchain</code></td>
+</tr>
+<tr>
+<td>LangGraph</td>
+<td><code>betterdb_agent_cache.adapters.langgraph</code></td>
+</tr>
+</tbody></table>
+
+
+<div class="nav-prev-next">
+<a href="03-session-store.html" class="prev"><span class="label">← Previous</span><span class="title">03 - Session Store</span></a>
+<a href="05-langgraph.html" class="next"><span class="label">Next →</span><span class="title">05 - LangGraph Checkpointing</span></a>
+</div>
+</article>
+<button class="theme-toggle" onclick="toggleTheme()" aria-label="Toggle theme"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/></svg></button>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+<script>hljs.highlightAll();</script>
+<script>function toggleTheme(){var b=document.body,l=b.classList.toggle("light");localStorage.setItem("theme",l?"light":"dark")}(function(){if(localStorage.getItem("theme")==="light")document.body.classList.add("light")})()</script>
+</body>
+</html>

@@ -46,10 +46,7 @@ const cache = new AgentCache({
     tool:    { ttl: 300   }, // Tool results: 5 minutes
     session: { ttl: 1800  }, // Session state: 30 minutes (sliding)
   },
-  costTable: {
-    'gpt-4o':      { inputPer1k: 0.0025, outputPer1k: 0.010 },
-    'gpt-4o-mini': { inputPer1k: 0.00015, outputPer1k: 0.0006 },
-  },
+  // costTable is optional — 100+ models are covered by default
 });
 ```
 
@@ -133,7 +130,7 @@ All keys are prefixed with the `name` option (default: `betterdb_ac`):
 | LLM cache | `betterdb_ac:llm:{sha256hash}` |
 | Tool cache | `betterdb_ac:tool:{toolName}:{sha256hash}` |
 | Session field | `betterdb_ac:session:{threadId}:{field}` |
-| Stats hash | `betterdb_ac:stats` |
+| Stats hash | `betterdb_ac:__stats` |
 
 To use a separate namespace per environment or application:
 
