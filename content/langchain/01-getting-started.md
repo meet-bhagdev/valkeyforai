@@ -14,7 +14,7 @@ LangGraph lets you build multi-step AI agents with branching logic and tool use.
 Docker installed and Python 3.10+ required.
 
 ```bash
-docker run -d --name valkey -p 6379:6379 valkey/valkey-bundle:latest
+docker run -d --name valkey -p 6379:6379 valkey/valkey-bundle:9-alpine
 ```
 
 The `valkey-bundle` image includes JSON and Search modules needed for ValkeyStore. Verify:
@@ -27,7 +27,7 @@ docker exec valkey valkey-cli PING
 ## Step 2: Install the Package
 
 ```bash
-pip install 'langgraph-checkpoint-aws[valkey]' langchain-aws
+uv pip install 'langgraph-checkpoint-aws[valkey]' langchain-aws python-dotenv
 ```
 
 This installs `ValkeySaver`, `ValkeyStore`, `ValkeyCache`, and the Bedrock integrations.
@@ -53,6 +53,11 @@ This installs `ValkeySaver`, `ValkeyStore`, `ValkeyCache`, and the Bedrock integ
 ## Step 4: Persist a LangGraph Agent
 
 ```python
+import os
+from dotenv import load_dotenv
+
+load_dotenv()
+
 from langgraph.graph import StateGraph, MessagesState
 from langgraph_checkpoint_aws import ValkeySaver
 from langchain_aws import ChatBedrockConverse

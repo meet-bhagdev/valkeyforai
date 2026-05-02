@@ -134,6 +134,17 @@ node build.js      # builds all tracks
 node build.js semantic-caching   # build one track
 ```
 
+### Generating Jupyter notebooks (optional)
+
+Every cookbook can be exported as a `.ipynb` notebook for use in JupyterLab, Colab, or VS Code:
+
+```bash
+node build-notebooks.js                    # all tracks → notebooks/
+node build-notebooks.js semantic-caching   # one track
+```
+
+Notebooks are generated from the same markdown source in `content/`. Python blocks become code cells, bash blocks become `!`-prefixed code cells, and prose stays as markdown cells.
+
 ## Project structure
 
 ```

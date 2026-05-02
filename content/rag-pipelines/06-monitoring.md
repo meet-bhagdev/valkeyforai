@@ -40,6 +40,11 @@ FT.INFO idx:docs
 ## Application-Level Metrics
 
 ```python
+import os
+from dotenv import load_dotenv
+
+load_dotenv()
+
 import time
 from dataclasses import dataclass, field
 

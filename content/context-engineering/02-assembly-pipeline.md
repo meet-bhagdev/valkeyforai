@@ -3,6 +3,11 @@
 Before every LLM call, an agent needs to assemble context from multiple sources. This function is the core of context engineering - it gathers everything the LLM needs into a structured prompt.
 
 ```python
+import os
+from dotenv import load_dotenv
+
+load_dotenv()
+
 import valkey
 import json
 import struct

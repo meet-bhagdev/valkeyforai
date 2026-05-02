@@ -3,6 +3,11 @@
 Every feature Hash includes an `_updated_at` timestamp. Use it to detect stale features before they poison your model:
 
 ```python
+import os
+from dotenv import load_dotenv
+
+load_dotenv()
+
 import valkey
 import time
 

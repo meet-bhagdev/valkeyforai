@@ -3,6 +3,11 @@
 A single session can hold state for multiple agents - each gets its own agent key and message keys under the same session ID. This is the foundation for orchestrator/subagent patterns where agents need to share context:
 
 ```python
+import os
+from dotenv import load_dotenv
+
+load_dotenv()
+
 from strands import Agent
 from strands_valkey_session_manager import ValkeySessionManager
 import valkey

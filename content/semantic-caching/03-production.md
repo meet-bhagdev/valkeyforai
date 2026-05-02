@@ -31,6 +31,11 @@ def evaluate_threshold(test_pairs: list, threshold: float):
 ## Pattern 2: Cache Hit Rate Monitoring
 
 ```python
+import os
+from dotenv import load_dotenv
+
+load_dotenv()
+
 import valkey
 
 client = valkey.Valkey(host="localhost", port=6379)

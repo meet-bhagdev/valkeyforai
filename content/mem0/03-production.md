@@ -3,6 +3,11 @@
 ElastiCache for Valkey 8.2 includes built-in vector search at no additional cost. Create a cluster via the AWS Console or CLI, then use the cluster endpoint as your Valkey URL.
 
 ```python
+import os
+from dotenv import load_dotenv
+
+load_dotenv()
+
 from mem0 import Memory
 
 config = {

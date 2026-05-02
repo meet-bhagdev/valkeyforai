@@ -18,6 +18,11 @@ User: "I forgot my password, help!"
 ## Step 1: Shared Valkey Connection
 
 ```python
+import os
+from dotenv import load_dotenv
+
+load_dotenv()
+
 from valkey import Valkey
 from langgraph_checkpoint_aws import ValkeySaver, ValkeyStore, ValkeyCache
 from langchain_aws import ChatBedrockConverse, BedrockEmbeddings

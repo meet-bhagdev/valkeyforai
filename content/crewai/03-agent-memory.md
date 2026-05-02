@@ -1,6 +1,11 @@
 ## Step 1: Configure Memory with Bedrock
 
 ```python
+import os
+from dotenv import load_dotenv
+
+load_dotenv()
+
 import boto3
 from crewai.memory.unified_memory import Memory
 from valkey_storage import ValkeyStorage

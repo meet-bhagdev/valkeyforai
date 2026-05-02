@@ -1,0 +1,54 @@
+[project]
+name = "valkey-for-ai"
+version = "0.1.0"
+description = "Cookbooks and runnable demos for using Valkey in AI workloads"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "valkey",
+    "numpy",
+    "openai",
+    "python-dotenv",
+    "tiktoken",
+    "ipykernel",
+    "pytest",
+]
+
+[project.optional-dependencies]
+# Framework-specific tracks
+langchain = [
+    "langgraph-checkpoint-aws[valkey]",
+    "langchain-aws",
+]
+crewai = [
+    "crewai",
+    "valkey-glide",
+    "boto3",
+]
+mem0 = [
+    "mem0ai",
+]
+strands = [
+    "strands-agents",
+    "strands-agents-tools",
+    "strands-valkey-session-manager",
+]
+haystack = [
+    "haystack-ai",
+    "valkey-haystack",
+    "sentence-transformers",
+]
+# Production cookbook extras (monitoring, APIs)
+production = [
+    "fastapi",
+    "pydantic",
+    "prometheus-client",
+    "structlog",
+]
+# Everything
+all = [
+    "valkey-for-ai[langchain,crewai,mem0,strands,haystack,production]",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

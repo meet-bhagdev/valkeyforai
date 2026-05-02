@@ -10,12 +10,12 @@ ML models need features at inference time. A feature store bridges offline train
 ## Prerequisites
 
   * Docker installed (or a running Valkey instance)
-  * Python 3.9+
+  * Python 3.12+
 
 ## Step 1: Start Valkey
 
 ```bash
-docker run -d --name valkey -p 6379:6379 valkey/valkey:latest
+docker run -d --name valkey -p 6379:6379 valkey/valkey-bundle:9-alpine
 ```
 
 Verify it's running:
@@ -28,7 +28,7 @@ docker exec valkey valkey-cli ping
 ## Step 2: Install Dependencies
 
 ```bash
-pip install valkey
+uv pip install valkey python-dotenv
 ```
 
 The `valkey` package is the official Valkey Python client - no special drivers needed.
@@ -56,6 +56,11 @@ fs:v1:user_profile:user_123 → {
 Starting with raw Valkey commands to see what's happening under the hood:
 
 ```python
+import os
+from dotenv import load_dotenv
+
+load_dotenv()
+
 import valkey
 import time
 

@@ -37,3 +37,6 @@ haystack-test/strands-venv/
 __pycache__/
 *.pyc
 node_modules/
+
+cookbooks/*
+notebooks/*

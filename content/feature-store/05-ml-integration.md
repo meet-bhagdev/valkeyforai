@@ -15,6 +15,11 @@ The goal: keep feature fetching so fast that it's invisible compared to model in
 A fraud model trained on 4 features. At inference, we fetch them from Valkey and predict:
 
 ```python
+import os
+from dotenv import load_dotenv
+
+load_dotenv()
+
 import numpy as np
 from src import ValkeyFeatureStore, Entity, FeatureView, Feature, FeatureType
 

@@ -12,7 +12,7 @@ The easiest way to get started is with Docker. Valkey Bundle includes vector sea
 # Pull and run Valkey with search module
 docker run -d --name valkey \
   -p 6379:6379 \
-  valkey/valkey-bundle:latest
+  valkey/valkey-bundle:9-alpine
 
 # Verify it's running
 docker exec -it valkey valkey-cli ping
@@ -42,6 +42,11 @@ Store your document chunks as hashes with their embeddings.
 
 ```python
 # Python example
+import os
+from dotenv import load_dotenv
+
+load_dotenv()
+
 import valkey
 import numpy as np
 

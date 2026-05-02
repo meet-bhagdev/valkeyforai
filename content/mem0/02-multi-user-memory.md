@@ -11,6 +11,11 @@ Session| `run_id`| Per-conversation context (ephemeral)
 ## Step 1: Setup
 
 ```python
+import os
+from dotenv import load_dotenv
+
+load_dotenv()
+
 from mem0 import Memory
 
 config = {

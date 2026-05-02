@@ -14,7 +14,7 @@ CrewAI lets you build teams of AI agents that collaborate on tasks. The problem:
 Docker installed and Python 3.10+ required. AWS credentials needed for Bedrock (later guides).
 
 ```bash
-docker run -d --name valkey -p 6379:6379 valkey/valkey-bundle:latest
+docker run -d --name valkey -p 6379:6379 valkey/valkey-bundle:9-alpine
 ```
 
 The `valkey-bundle` image includes JSON and Search modules. Verify:
@@ -27,7 +27,7 @@ docker exec valkey valkey-cli PING
 ## Step 2: Install Dependencies
 
 ```bash
-pip install crewai valkey-glide boto3
+uv pip install crewai valkey-glide boto3 python-dotenv
 ```
 
 **Why GLIDE?** Valkey GLIDE is the official Valkey client with a Rust core for high performance. It supports both standalone Valkey and ElastiCache for Valkey clusters. Unlike generic Redis clients, GLIDE is purpose-built for Valkey and supports all Valkey-specific features including `FT.*` search commands.
@@ -35,6 +35,11 @@ pip install crewai valkey-glide boto3
 ## Step 3: Connection Configuration
 
 ```python
+import os
+from dotenv import load_dotenv
+
+load_dotenv()
+
 from dataclasses import dataclass
 import os
 

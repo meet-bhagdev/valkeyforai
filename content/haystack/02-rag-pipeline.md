@@ -15,6 +15,11 @@ Valkey handles the retrieval step - sub-millisecond KNN over your document embed
 Run this once to embed and store your documents:
 
 ```python
+import os
+from dotenv import load_dotenv
+
+load_dotenv()
+
 from haystack import Pipeline, Document
 from haystack.components.embedders import SentenceTransformersDocumentEmbedder
 from haystack.components.writers import DocumentWriter

@@ -25,6 +25,11 @@ User: "Can you explain Valkey?"
 ## Step 1: Create the Cache Index
 
 ```python
+import os
+from dotenv import load_dotenv
+
+load_dotenv()
+
 from glide import (
     ft, VectorField, VectorAlgorithm, VectorFieldAttributesHnsw,
     VectorType, DistanceMetricType, NumericField,

@@ -62,6 +62,11 @@ Assistant message with tool use:
 Create a new `Agent` with the same `session_id` - Strands reloads the full conversation history from Valkey automatically:
 
 ```python
+import os
+from dotenv import load_dotenv
+
+load_dotenv()
+
 import valkey
 from strands import Agent
 from strands_valkey_session_manager import ValkeySessionManager

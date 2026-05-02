@@ -4,7 +4,10 @@
   "description": "A practical, use-case-driven hub that helps developers understand how to use Valkey in real AI workloads. Instead of making users piece together low-level features, this site offers clear cookbooks, reference architectures, GitHub demos, and runnable projects for patterns like semantic caching, conversation memory, vector search, agent session state, rate limiting, streaming responses, and more.",
   "main": "script.js",
   "scripts": {
-    "build": "node build.js", "test": "echo \"Error: no test specified\" && exit 1"
+    "build": "node build.js",
+    "dev": "node dev.js",
+    "build:notebooks": "node build-notebooks.js",
+    "test": "echo \"Error: no test specified\" && exit 1"
   },
   "repository": {
     "type": "git",
@@ -20,5 +23,9 @@
   "homepage": "https://github.com/meet-bhagdev/valkeyforai#readme",
   "dependencies": {
     "marked": "^17.0.4"
+  },
+  "devDependencies": {
+    "browser-sync": "^3.0.4",
+    "chokidar": "^5.0.0"
   }
 }
