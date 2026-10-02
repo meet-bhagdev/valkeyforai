@@ -1,31 +1,63 @@
 ## How Semantic Caching Works
 
-```python
-# Flow:
-# 1. User sends prompt
-# 2. Embed the prompt → vector
-# 3. FT.SEARCH: find similar cached prompts (KNN)
-# 4. If similarity score < threshold → CACHE HIT → return cached response
-# 5. Else → CACHE MISS → call LLM → cache the prompt+response → return
-#
-#  User Prompt → Embed → FT.SEARCH KNN → Hit? → Return cached
-#                                        → Miss? → Call LLM → HSET → Return
+Gist
+
+```
+User Prompt → Embed → FT.SEARCH KNN → Hit?  → Return cached response (~1ms)
+                                      Miss? → Call LLM (~1-3s) → HSET in Valkey → Return
+```
+
+Diagram
+
+```mermaid
+flowchart TD
+    A["User Prompt"] --> B["Embed → Vector"]
+    B --> C["FT.SEARCH KNN\n(find similar cached prompts)"]
+    C --> D{"score < threshold?"}
+    D -- "✅ Cache Hit" --> E["Return cached response\n⚡ ~1ms"]
+    D -- "❌ Cache Miss" --> F["Call LLM\n🕐 ~1-3s"]
+    F --> G["HSET prompt + response\n+ embedding in Valkey"]
+    G --> H["Return LLM response"]
 ```
 
 > **Why semantic, not exact?** "What is Valkey?" and "Can you explain what Valkey is?" are different strings but mean the same thing. Exact-match caching misses these. Semantic caching uses vector similarity to match by *meaning*, dramatically increasing hit rates.
 
 ## Prerequisites
 
-- Valkey with the **valkey-search** module loaded (or ElastiCache for Valkey 8.2+)
-- Python 3.9+ with `valkey`, `openai`, `numpy`
+- Valkey with the **valkey-search** module loaded (or ElastiCache for Valkey 8.2+ or Memorystore for Valkey 8+)
+- Python 3.12+ with `valkey`, `openai`, `numpy` and `python-dotenv`
 
-## Step 1: Setup
+## Step 1: Start Valkey
+
+1.1 - If you haven't already started a `Valkey` server with the `valkey-search` module you can start with the `valkey-bundle` container.
 
 ```bash
-pip install valkey openai numpy
+docker run -d --name valkey -p 6379:6379 valkey/valkey-bundle:9-alpine
 ```
 
+## Step 2: Setup
+
+2.1 - Create a `.env` file with the following environment variables:
+
+```bash
+OPENAI_API_KEY=<your_openai_api_key>
+OPENAI_MODEL=gpt-5.1
+```
+
+2.2 - Install dependencies
+
+```bash
+uv pip install valkey openai numpy python-dotenv
+```
+
+2.3 - Connect to Valkey and OpenAI
+
 ```python
+import os
+from dotenv import load_dotenv
+
+load_dotenv()
+
 import valkey
 import numpy as np
 import json
@@ -42,7 +74,7 @@ SIMILARITY_THRESHOLD = 0.15  # COSINE distance: 0=identical, 2=opposite
 CACHE_TTL = 3600  # 1 hour
 ```
 
-## Step 2: Create the Cache Index
+## Step 3: Create the Cache Index
 
 ```python
 def create_cache_index():
@@ -65,7 +97,7 @@ def create_cache_index():
 create_cache_index()
 ```
 
-## Step 3: Embedding Helper
+## Step 4: Embedding Helper
 
 ```python
 def get_embedding(text: str) -> bytes:
@@ -78,7 +110,7 @@ def get_embedding(text: str) -> bytes:
     return np.array(vec, dtype=np.float32).tobytes()
 ```
 
-## Step 4: The Semantic Cache
+## Step 5: The Semantic Cache
 
 ```python
 def semantic_cache_lookup(prompt: str) -> dict:
@@ -162,7 +194,7 @@ def ask_with_cache(prompt: str) -> dict:
     }
 ```
 
-## Step 5: Test It
+## Step 6: Test It
 
 ```python
 # First call - cache MISS (calls LLM)

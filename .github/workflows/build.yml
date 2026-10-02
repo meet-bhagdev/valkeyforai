@@ -1,4 +1,4 @@
-name: Build Cookbooks from Markdown
+name: Build Cookbook Artifacts
 
 on:
   push:
@@ -6,6 +6,22 @@ on:
     paths:
       - 'content/**'
       - 'build.js'
+      - 'build-notebooks.js'
+      - 'package.json'
+      - 'package-lock.json'
+      - '.gitignore'
+      - '.github/workflows/build.yml'
+  pull_request:
+    paths:
+      - 'content/**'
+      - 'cookbooks/**/*.html'
+      - 'notebooks/**/*.ipynb'
+      - 'build.js'
+      - 'build-notebooks.js'
+      - 'package.json'
+      - 'package-lock.json'
+      - '.gitignore'
+      - '.github/workflows/build.yml'
 
 permissions:
   contents: write
@@ -23,21 +39,33 @@ jobs:
           node-version: '20'
 
       - name: Install dependencies
-        run: npm install
+        run: npm ci
 
-      - name: Build cookbooks from markdown
-        run: node build.js
+      - name: Build HTML and Jupyter notebooks
+        run: npm run build
+
+      - name: Validate notebook coverage
+        run: npm run check:notebooks
 
       - name: Check for changes
         id: changes
         run: |
-          git diff --quiet cookbooks/ || echo "changed=true" >> $GITHUB_OUTPUT
+          if [[ -n "$(git status --porcelain -- cookbooks/ notebooks/)" ]]; then
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          fi
 
-      - name: Commit and push generated HTML
-        if: steps.changes.outputs.changed == 'true'
+      - name: Require generated artifacts in pull requests
+        if: github.event_name == 'pull_request' && steps.changes.outputs.changed == 'true'
+        run: |
+          git status --short -- cookbooks/ notebooks/
+          echo "Run 'npm run build' and commit the generated artifacts."
+          exit 1
+
+      - name: Commit and push generated artifacts
+        if: github.event_name == 'push' && steps.changes.outputs.changed == 'true'
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add cookbooks/
-          git commit -m "Auto-build: regenerate cookbooks from markdown"
+          git add cookbooks/ notebooks/
+          git commit -m "Auto-build: regenerate cookbook artifacts"
           git push

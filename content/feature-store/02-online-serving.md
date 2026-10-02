@@ -21,6 +21,11 @@ The simplest pattern - fetch all features for one entity:
 ### Raw Valkey: HGETALL
 
 ```python
+import os
+from dotenv import load_dotenv
+
+load_dotenv()
+
 import valkey
 
 client = valkey.Valkey(host="localhost", port=6379, decode_responses=True)

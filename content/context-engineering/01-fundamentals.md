@@ -23,15 +23,28 @@ Every LLM call needs context assembled from up to 5 sources. Valkey can serve as
 ## Prerequisites
 
 - Valkey with the **valkey-search** module (or ElastiCache for Valkey 8.2+)
-- Python 3.9+ with `valkey`
+- Python 3.12+ with `valkey`
+
+## Step 1: Start Valkey
 
 ```bash
-pip install valkey
+docker run -d --name valkey -p 6379:6379 valkey/valkey-bundle:9-alpine
 ```
 
-## Step 1: Store System Instructions
+## Step 2: Install Dependencies
+
+```bash
+uv pip install valkey python-dotenv
+```
+
+## Step 3: Store System Instructions
 
 ```python
+import os
+from dotenv import load_dotenv
+
+load_dotenv()
+
 import valkey
 import json
 
@@ -47,7 +60,7 @@ client.hset("agent:config:support_bot", mapping={
 print("System instructions stored")
 ```
 
-## Step 2: Manage Conversation History
+## Step 4: Manage Conversation History
 
 ```python
 import time
@@ -76,7 +89,7 @@ for msg in history:
     print(f"  {msg['role']}: {msg['content'][:60]}...")
 ```
 
-## Step 3: Store Tool Outputs
+## Step 5: Store Tool Outputs
 
 ```python
 def store_tool_output(session_id: str, step: int, tool_name: str, result: dict):
@@ -109,7 +122,7 @@ store_tool_output("sess_001", 1, "check_order", {
 })
 ```
 
-## Step 4: Long-term User Memory
+## Step 6: Long-term User Memory
 
 ```python
 def remember(user_id: str, key: str, value: str):

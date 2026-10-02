@@ -28,6 +28,11 @@ AI agents run multi-step workflows: plan → search → analyze → respond. If 
 Save the agent's state after each step. If it crashes, resume from the last checkpoint.
 
 ```python
+import os
+from dotenv import load_dotenv
+
+load_dotenv()
+
 import json
 from glide import GlideClient, GlideClientConfiguration, NodeAddress
 

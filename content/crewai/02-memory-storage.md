@@ -3,6 +3,11 @@
 Each memory is a structured record with content, scope, categories, importance, and an embedding vector:
 
 ```python
+import os
+from dotenv import load_dotenv
+
+load_dotenv()
+
 from pydantic import BaseModel, Field
 from datetime import datetime
 from uuid import uuid4

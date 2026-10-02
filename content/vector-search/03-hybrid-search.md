@@ -5,6 +5,11 @@ Pure vector search returns the most similar items globally. But often you need t
 ## Step 1: Create an Index with Multiple Field Types
 
 ```python
+import os
+from dotenv import load_dotenv
+
+load_dotenv()
+
 import valkey
 import numpy as np
 

@@ -3,6 +3,11 @@
 The memory layer is the foundation of context engineering at scale. Valkey supports both memory types through TTL management:
 
 ```python
+import os
+from dotenv import load_dotenv
+
+load_dotenv()
+
 import valkey
 import json
 import time

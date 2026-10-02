@@ -19,6 +19,11 @@ Alice's agent-1 calls GPT-4. We check:
 ## Step 1: Define Tiers
 
 ```python
+import os
+from dotenv import load_dotenv
+
+load_dotenv()
+
 from dataclasses import dataclass
 
 @dataclass

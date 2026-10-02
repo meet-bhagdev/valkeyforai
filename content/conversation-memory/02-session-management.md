@@ -25,6 +25,11 @@ meta:sess_abc123          → {
 ## Pattern 1: Create a Session with Metadata
 
 ```python
+import os
+from dotenv import load_dotenv
+
+load_dotenv()
+
 import asyncio, json, time
 from glide import GlideClient, GlideClientConfiguration, NodeAddress
 

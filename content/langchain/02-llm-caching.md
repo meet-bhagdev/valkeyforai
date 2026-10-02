@@ -13,6 +13,11 @@ Exact-match caching eliminates redundant calls. (For meaning-based matching, see
 ## Step 1: Initialize ValkeyCache
 
 ```python
+import os
+from dotenv import load_dotenv
+
+load_dotenv()
+
 from langgraph_checkpoint_aws import ValkeyCache
 from valkey import Valkey
 

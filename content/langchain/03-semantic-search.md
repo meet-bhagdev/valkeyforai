@@ -9,6 +9,11 @@
 ## Step 1: Configure ValkeyStore
 
 ```python
+import os
+from dotenv import load_dotenv
+
+load_dotenv()
+
 from langgraph_checkpoint_aws import ValkeyStore
 from langchain_aws import BedrockEmbeddings
 

@@ -10,7 +10,7 @@ Haystack is a framework for building RAG pipelines and search applications. Valk
 Vector search requires the `valkey-bundle` image, which includes the valkey-search module:
 
 ```bash
-docker run -d --name valkey -p 6379:6379 valkey/valkey-bundle:latest
+docker run -d --name valkey -p 6379:6379 valkey/valkey-bundle:9-alpine
 ```
 
 Verify it's running and the search module is loaded:
@@ -25,9 +25,9 @@ docker exec valkey valkey-cli MODULE LIST
 ## Step 2: Install Dependencies
 
 ```bash
-pip install haystack-ai
-pip install valkey-haystack
-pip install sentence-transformers
+uv pip install haystack-ai python-dotenv
+uv pip install valkey-haystack python-dotenv
+uv pip install sentence-transformers python-dotenv
 ```
 
 The `valkey-haystack` package provides `ValkeyDocumentStore` and `ValkeyEmbeddingRetriever` as first-class Haystack components.
@@ -35,6 +35,11 @@ The `valkey-haystack` package provides `ValkeyDocumentStore` and `ValkeyEmbeddin
 ## Step 3: Connect to ValkeyDocumentStore
 
 ```python
+import os
+from dotenv import load_dotenv
+
+load_dotenv()
+
 from haystack_integrations.document_stores.valkey import ValkeyDocumentStore
 
 document_store = ValkeyDocumentStore(

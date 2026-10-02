@@ -13,7 +13,7 @@ Unlike other semantic cache libraries it is **Valkey-native** (handles `valkey-s
 The `valkey-bundle` image includes the `valkey-search` module required for vector indexing.
 
 ```bash
-docker run -d --name valkey -p 6379:6379 valkey/valkey-bundle:latest
+docker run -d --name valkey -p 6379:6379 valkey/valkey-bundle:9-alpine
 ```
 
 Verify the module is loaded:

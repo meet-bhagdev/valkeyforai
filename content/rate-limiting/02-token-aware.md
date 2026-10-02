@@ -12,6 +12,11 @@ A request-based limiter treats all 3 the same. That's wrong.
 ## Step 1: Count Tokens Before Calling the LLM
 
 ```python
+import os
+from dotenv import load_dotenv
+
+load_dotenv()
+
 import tiktoken
 
 def count_tokens(text: str, model: str = "gpt-4") -> int:

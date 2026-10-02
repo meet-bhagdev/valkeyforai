@@ -21,7 +21,7 @@ The session manager persists three types of data to Valkey:
 ## Step 1: Start Valkey
 
 ```bash
-docker run -d --name valkey -p 6379:6379 valkey/valkey-bundle:latest
+docker run -d --name valkey -p 6379:6379 valkey/valkey-bundle:9-alpine
 ```
 
 ```bash
@@ -32,9 +32,9 @@ docker exec valkey valkey-cli PING
 ## Step 2: Install Dependencies
 
 ```bash
-pip install strands-agents strands-agents-tools
-pip install valkey
-pip install strands-valkey-session-manager
+uv pip install strands-agents strands-agents-tools python-dotenv
+uv pip install valkey python-dotenv
+uv pip install strands-valkey-session-manager python-dotenv
 ```
 
 **Package:** `strands-valkey-session-manager` is a community package. Source: [GitHub](https://github.com/jeromevdl/strands-valkey-session-manager) - Docs: [strandsagents.com](https://strandsagents.com/docs/community/session-managers/strands-valkey-session-manager/)
@@ -42,6 +42,11 @@ pip install strands-valkey-session-manager
 ## Step 3: Connect to Valkey
 
 ```python
+import os
+from dotenv import load_dotenv
+
+load_dotenv()
+
 import valkey
 from strands_valkey_session_manager import ValkeySessionManager
 

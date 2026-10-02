@@ -17,6 +17,11 @@ Instead of embedding only the last user message, we embed a summary of the full 
 ## Step 1: Create Index with TAG Filter for User/Session
 
 ```python
+import os
+from dotenv import load_dotenv
+
+load_dotenv()
+
 import valkey
 import numpy as np
 import hashlib

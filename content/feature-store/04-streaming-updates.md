@@ -24,6 +24,11 @@ Any service can publish feature updates using `XADD`:
 ### Raw Valkey
 
 ```python
+import os
+from dotenv import load_dotenv
+
+load_dotenv()
+
 import valkey
 import json
 import time

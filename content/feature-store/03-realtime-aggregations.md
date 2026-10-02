@@ -13,6 +13,11 @@ Count events in a sliding time window - e.g., "transactions in the last hour."
 We use a **Sorted Set** where each member is a unique event ID and the score is the timestamp:
 
 ```python
+import os
+from dotenv import load_dotenv
+
+load_dotenv()
+
 import valkey
 import time
 import uuid

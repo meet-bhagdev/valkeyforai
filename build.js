@@ -30,7 +30,15 @@ function loadMeta(trackDir) {
 }
 
 function buildPage(mdContent, cookbook, track, meta) {
-  const htmlContent = marked.parse(mdContent);
+  let htmlContent = marked.parse(mdContent);
+  const notebookFile = cookbook.source.replace(/\.md$/, '.ipynb');
+
+  // Convert <pre><code class="language-mermaid">...</code></pre> to <pre class="mermaid">...</pre>
+  // so mermaid.js can find and render them
+  htmlContent = htmlContent.replace(
+    /<pre><code class="language-mermaid">([\s\S]*?)<\/code><\/pre>/g,
+    (_, code) => `<pre class="mermaid">${code}</pre>`
+  );
   
   const diffClass = { 'Beginner': 'diff-easy', 'Intermediate': 'diff-medium', 'Advanced': 'diff-hard' }[cookbook.difficulty] || 'diff-medium';
   
@@ -70,7 +78,7 @@ pre code.hljs{background:transparent!important;padding:0}
 <nav class="nav"><div class="nav-inner"><a href="/" class="nav-logo"><img src="/valkey-logo.svg" alt="Valkey"><span class="accent">for ai</span></a><div class="nav-links"><a href="/#use-cases">Use Cases</a><a href="/#frameworks">Frameworks</a><a href="https://github.com/meet-bhagdev/valkeyforai/tree/main" target="_blank">GitHub</a></div></div></nav>
 <article>
 <div class="breadcrumb"><a href="/">Home</a> → <a href="/cookbooks/${track}/">${meta.trackName}</a> → ${cookbook.num} ${cookbook.breadcrumb || cookbook.title}</div>
-<div class="meta"><span class="${diffClass}">${cookbook.difficulty}</span><span class="lang">${cookbook.language || 'Python'}</span><span class="lang">~${cookbook.time}</span></div>
+<div class="meta"><span class="${diffClass}">${cookbook.difficulty}</span><span class="lang">${cookbook.language || 'Python'}</span><span class="lang">~${cookbook.time}</span><a class="notebook-link" href="/notebooks/${track}/${notebookFile}" download>↓ Jupyter notebook</a></div>
 <h1>${cookbook.h1 || cookbook.title}</h1>
 ${cookbook.lead ? `<p class="lead">${cookbook.lead}</p>` : ''}
 
@@ -84,6 +92,7 @@ ${nextHtml}
 <button class="theme-toggle" onclick="toggleTheme()" aria-label="Toggle theme"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/></svg></button>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
 <script>hljs.highlightAll();</script>
+<script type="module">import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs';mermaid.initialize({startOnLoad:true,theme:document.body.classList.contains('light')?'default':'dark'});</script>
 <script>function toggleTheme(){var b=document.body,l=b.classList.toggle("light");localStorage.setItem("theme",l?"light":"dark")}(function(){if(localStorage.getItem("theme")==="light")document.body.classList.add("light")})()</script>
 </body>
 </html>`;

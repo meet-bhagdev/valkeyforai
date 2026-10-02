@@ -1,26 +1,25 @@
 ## Prerequisites
 
   * Valkey server with the **valkey-search** module loaded
-  * Python 3.9+ with the `valkey` and `numpy` packages
+  * Python 3.12+ with the `valkey` and `numpy` packages
 
 ## Step 1: Start Valkey with Search Module
 
 ```bash
-# Start Valkey with the search module loaded
-valkey-server --loadmodule /usr/lib/valkey/libsearch.so
+docker run -d --name valkey -p 6379:6379 valkey/valkey-bundle:9-alpine
 ```
 
 Verify the module is loaded:
 
 ```bash
-valkey-cli MODULE LIST
+docker exec valkey valkey-cli MODULE LIST
 # Should show "search" in the output
 ```
 
 ## Step 2: Install Python Client
 
 ```bash
-pip install valkey numpy
+uv pip install valkey numpy python-dotenv
 ```
 
 We use the standard `valkey` Python client. Module commands like `FT.CREATE` are called via `execute_command()`.
@@ -28,6 +27,11 @@ We use the standard `valkey` Python client. Module commands like `FT.CREATE` are
 ## Step 3: Create a Vector Index
 
 ```python
+import os
+from dotenv import load_dotenv
+
+load_dotenv()
+
 import valkey
 import numpy as np
 

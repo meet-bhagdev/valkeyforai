@@ -1,6 +1,11 @@
 ## Pattern 1: Pub/Sub Fan-Out (Live)  
 
 ```python
+import os
+from dotenv import load_dotenv
+
+load_dotenv()
+
 import valkey, json, time
 client = valkey.Valkey(host="localhost", port=6379, decode_responses=True)
 

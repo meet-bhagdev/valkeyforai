@@ -21,6 +21,8 @@ article{max-width:760px;margin:0 auto;padding:40px 24px 80px}
 .meta .diff-mid{background:rgba(245,158,11,.12);color:#f59e0b}
 .meta .diff-hard{background:rgba(244,63,94,.12);color:#f43f5e}
 .meta .lang{background:rgba(99,102,241,.12);color:var(--g1)}
+.meta .notebook-link{display:inline-flex;align-items:center;margin-left:auto;padding:4px 12px;border:1px solid rgba(99,102,241,.28);border-radius:100px;background:rgba(99,102,241,.08);color:var(--g1);font-size:12px;font-weight:600}
+.meta .notebook-link:hover{background:rgba(99,102,241,.16);text-decoration:none}
 h1{font-size:40px;font-weight:900;letter-spacing:-.04em;line-height:1.15;margin-bottom:12px}
 h1 .gradient{background:linear-gradient(135deg,var(--g1),var(--g2));-webkit-background-clip:text;-webkit-text-fill-color:transparent}
 .lead{font-size:18px;color:var(--t2);margin-bottom:40px;max-width:600px}
@@ -49,4 +51,4 @@ td{padding:10px 12px;border-bottom:1px solid rgba(255,255,255,.04);color:var(--t
 .nav-prev-next .label{font-size:12px;color:var(--t3);font-weight:500}
 .nav-prev-next .title{font-size:15px;font-weight:600}
 .nav-prev-next .next{text-align:right}
-@media(max-width:600px){h1{font-size:28px}h2{font-size:20px}article{padding:24px 16px 60px}pre{font-size:12px;padding:12px}}
+@media(max-width:600px){h1{font-size:28px}h2{font-size:20px}article{padding:24px 16px 60px}pre{font-size:12px;padding:12px}.meta .notebook-link{margin-left:0}}

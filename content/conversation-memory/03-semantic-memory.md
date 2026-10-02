@@ -25,7 +25,7 @@ User asks: "How do I deploy?"
 ## Step 1: Start Valkey with Search Module
 
 ```bash
-docker run -d --name valkey -p 6379:6379 valkey/valkey-bundle:latest
+docker run -d --name valkey -p 6379:6379 valkey/valkey-bundle:9-alpine
 ```
 
 The `valkey-bundle` image includes valkey-search for vector similarity search and valkey-json for JSON document storage.
@@ -33,6 +33,11 @@ The `valkey-bundle` image includes valkey-search for vector similarity search an
 ## Step 2: Create the Vector Index
 
 ```python
+import os
+from dotenv import load_dotenv
+
+load_dotenv()
+
 from glide import (
     GlideClient, GlideClientConfiguration, NodeAddress,
     ft, TagField, NumericField,

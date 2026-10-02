@@ -3,6 +3,11 @@
 Always tell clients **when** to retry:
 
 ```python
+import os
+from dotenv import load_dotenv
+
+load_dotenv()
+
 from fastapi import FastAPI, Response, HTTPException
 
 app = FastAPI()
